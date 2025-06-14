@@ -7,8 +7,6 @@
     "Frost": "https://github.com/ajay9634/winlator-ajay/releases"
   },
   "Components": {
-    "Xenia (Xbox 360)": "https://github.com/xenia-project/xenia/releases",
-    "PCSX2 (PS2)": "https://pcsx2.net/downloads",
-    "RPCS3 (PS3)": "https://rpcs3.net/download"
+    "Components": "https://github.com/DEYVIDYT/Winlator-components/releases"
   }
 }
