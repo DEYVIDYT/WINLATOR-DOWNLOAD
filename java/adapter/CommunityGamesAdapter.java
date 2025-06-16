@@ -88,24 +88,24 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
                 Intent serviceIntent = new Intent(itemContext, DownloadService.class);
 
                 // Existing logic to determine action based on URL type
-                if (gameUrl.contains("gofile.io/d/") || gameUrl.contains("gofile.io/download/")) {
+                if (gameUrl.contains("gofile.io/d/") || gameUrl.contains("gofile.io/download/") || gameUrl.contains("gofile.io/w/") || gameUrl.contains("gofile.io/edit/")) {
                     Log.d("CommunityGamesAdapter", "Gofile URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
-                    serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD);
+                    serviceIntent.setAction(DownloadService.ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD);
                     serviceIntent.putExtra(DownloadService.EXTRA_GOFILE_URL, gameUrl);
-                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
+                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName); // gameName is used as a fallback by resolver if needed
                 } else if (gameUrl.contains("www.mediafire.com/file/")) {
                     Log.d("CommunityGamesAdapter", "MediaFire URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
-                    serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD);
+                    serviceIntent.setAction(DownloadService.ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD);
                     serviceIntent.putExtra(DownloadService.EXTRA_MEDIAFIRE_URL, gameUrl);
                     serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
                 } else if (gameUrl.contains("drive.google.com")) {
                     Log.d("CommunityGamesAdapter", "Google Drive URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
-                    serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD);
+                    serviceIntent.setAction(DownloadService.ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD);
                     serviceIntent.putExtra(DownloadService.EXTRA_GOOGLE_DRIVE_URL, gameUrl);
                     serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
                 } else if (gameUrl.contains("pixeldrain.com/u/") || gameUrl.contains("pixeldrain.com/l/")) {
                     Log.d("CommunityGamesAdapter", "Pixeldrain URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
-                    serviceIntent.setAction(DownloadService.ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD); // setAction instead of putExtra for action
+                    serviceIntent.setAction(DownloadService.ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD);
                     serviceIntent.putExtra(DownloadService.EXTRA_PIXELDRAIN_URL, gameUrl);
                     serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
                 } else {
