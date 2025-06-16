@@ -318,7 +318,7 @@ public class DownloadService extends Service {
     private void handleResolvePixeldrainUrl(String pageUrl) {
         Log.i(TAG, "handleResolvePixeldrainUrl: Starting resolution for " + pageUrl);
         // Ensure PixeldrainLinkResolver is correctly implemented and imported
-        PixeldrainLinkResolver resolver = new PixeldrainLinkResolver(this);
+        PixeldrainLinkResolver resolver = new PixeldrainLinkResolver();
         DownloadItem resolvedItem = resolver.resolvePixeldrainUrl(pageUrl);
 
         if (resolvedItem != null && resolvedItem.directUrl != null && !resolvedItem.directUrl.isEmpty()) {
@@ -1336,8 +1336,8 @@ public class DownloadService extends Service {
                     conn.connect();
 
                     int responseCode = conn.getResponseCode();
-                    // HTTP_PARTIAL_CONTENT (206) is expected for range requests
-                    if (responseCode != HttpURLConnection.HTTP_PARTIAL_CONTENT && responseCode != HttpURLConnection.HTTP_OK) {
+                    // HTTP_PARTIAL (206) is expected for range requests
+                    if (responseCode != HttpURLConnection.HTTP_PARTIAL && responseCode != HttpURLConnection.HTTP_OK) {
                         Log.e(TAG, "Segment " + segmentIndex + " for " + DownloadTask.this.displayFileName + " failed. Server returned HTTP " + responseCode + " " + conn.getResponseMessage()); // Error 18-23: displayFileName
                         throw new IOException("Server error: " + responseCode);
                     }
