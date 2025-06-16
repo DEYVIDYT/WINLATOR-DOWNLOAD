@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel</title>
+    <style>
+        /* Basic styling */
+        body { font-family: sans-serif; }
+        .container { margin: 20px; }
+        .game-item { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Admin Panel</h1>
+
+        <div id="loginSection">
+            Password: <input type="password" id="password">
+            <button onclick="login()">Login</button>
+            <p id="loginError" style="color:red;"></p>
+        </div>
+
+        <div id="adminContent" class="hidden">
+            <h2>Pending Games</h2>
+            <div id="pendingGamesList"></div>
+            <button onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <script>
+        const ADMIN_PHP = 'admin.php';
+        // Basic password - In a real app, use secure session management
+        let sessionToken = null;
+
+        async function login() {
+            const password = document.getElementById('password').value;
+            const response = await fetch(ADMIN_PHP, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `action=login&password=${encodeURIComponent(password)}`
+            });
+            const result = await response.json();
+            if (result.success) {
+                sessionToken = result.token; // Store a dummy token
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('adminContent').classList.remove('hidden');
+                document.getElementById('loginError').textContent = '';
+                loadPendingGames();
+            } else {
+                document.getElementById('loginError').textContent = result.message || 'Login failed.';
+                sessionToken = null;
+            }
+        }
+
+        function logout() {
+            sessionToken = null;
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('adminContent').classList.add('hidden');
+            document.getElementById('pendingGamesList').innerHTML = '';
+            document.getElementById('password').value = '';
+        }
+
+        async function loadPendingGames() {
+            if (!sessionToken) return;
+            const response = await fetch(`${ADMIN_PHP}?action=list_pending&token=${encodeURIComponent(sessionToken)}`);
+            if (response.status === 401) { // Unauthorized
+                logout();
+                document.getElementById('loginError').textContent = 'Session expired or invalid. Please login again.';
+                return;
+            }
+            const games = await response.json();
+            const listDiv = document.getElementById('pendingGamesList');
+            listDiv.innerHTML = '';
+            if (games.error) {
+                listDiv.innerHTML = `<p style="color:red">${games.error}</p>`;
+                return;
+            }
+            if (games.length === 0) {
+                listDiv.innerHTML = '<p>No pending games.</p>';
+                return;
+            }
+            games.forEach(game => {
+                const item = document.createElement('div');
+                item.className = 'game-item';
+                item.innerHTML = `
+                    <strong>${game.name}</strong> (${game.size})<br>
+                    URL: ${game.url}<br>
+                    Status: ${game.status}<br>
+                    <button onclick="approveGame('${game.name}')">Approve</button>
+                    <button onclick="rejectGame('${game.name}')">Reject</button>
+                `;
+                listDiv.appendChild(item);
+            });
+        }
+
+        async function approveGame(name) {
+            if (!sessionToken) return;
+            if (!confirm(\`Are you sure you want to approve ${name}?\`)) return;
+            const response = await fetch(`${ADMIN_PHP}?action=approve&name=${encodeURIComponent(name)}&token=${encodeURIComponent(sessionToken)}`, { method: 'POST' });
+            const result = await response.json();
+            if (result.success) {
+                loadPendingGames();
+            } else {
+                alert('Error approving game: ' + (result.message || 'Unknown error'));
+            }
+             if (response.status === 401) { logout(); document.getElementById('loginError').textContent = 'Session expired. Please login.';}
+        }
+
+        async function rejectGame(name) {
+            if (!sessionToken) return;
+            if (!confirm(\`Are you sure you want to reject ${name}?\`)) return;
+            const response = await fetch(`${ADMIN_PHP}?action=reject&name=${encodeURIComponent(name)}&token=${encodeURIComponent(sessionToken)}`, { method: 'POST' });
+            const result = await response.json();
+            if (result.success) {
+                loadPendingGames();
+            } else {
+                alert('Error rejecting game: ' + (result.message || 'Unknown error'));
+            }
+            if (response.status === 401) { logout(); document.getElementById('loginError').textContent = 'Session expired. Please login.';}
+        }
+    </script>
+</body>
+</html>

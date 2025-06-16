@@ -35,13 +35,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($game['name'] === $gameName) {
                 $game['size'] = $gameSize;
                 $game['url'] = $gameUrl;
+                // Preserve existing status, or set to pending if not present
+                if (!isset($game['status'])) {
+                    $game['status'] = 'pending';
+                }
                 $found = true;
                 break;
             }
         }
 
         if (!$found) {
-            $games[] = ['name' => $gameName, 'size' => $gameSize, 'url' => $gameUrl];
+            $games[] = ['name' => $gameName, 'size' => $gameSize, 'url' => $gameUrl, 'status' => 'pending'];
         }
 
         // Salva os dados atualizados no arquivo JSON
