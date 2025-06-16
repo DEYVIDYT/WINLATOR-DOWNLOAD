@@ -5,19 +5,14 @@ import org.json.JSONObject;
 import org.json.JSONException;
 
 import java.io.BufferedReader;
-import java.io.DataOutputStream; // For writing to output stream
+// DataOutputStream or OutputStream are not needed here if we send no body
 import java.io.InputStreamReader;
-import java.io.OutputStream; // For generic output stream
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-// HashMap not used, can be removed if not planned for other methods
-// import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-// Map not used, can be removed if not planned for other methods
-// import java.util.Map;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -28,6 +23,7 @@ public class GofileApiHandler {
     private static final String USER_AGENT = "Mozilla/5.0";
 
     public static class GofileEntry {
+        // ... (GofileEntry class remains the same)
         public String id;
         public String type;
         public String name;
@@ -63,31 +59,26 @@ public class GofileApiHandler {
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("User-Agent", USER_AGENT);
-            conn.setRequestProperty("Accept", "*/*"); // Python script uses */*
+            conn.setRequestProperty("Accept", "*/*");
             conn.setRequestProperty("Accept-Encoding", "gzip, deflate, br");
             conn.setRequestProperty("Connection", "keep-alive");
 
-            // Modifications for POST with empty JSON body {}
-            String emptyJsonBody = "{}";
-            byte[] outputBytes = emptyJsonBody.getBytes(StandardCharsets.UTF_8);
-
-            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-            conn.setRequestProperty("Content-Length", String.valueOf(outputBytes.length));
-            conn.setDoOutput(true); // Essential for sending a body
+            // Modifications for a "bodiless" POST with Content-Length: 0
+            conn.setDoOutput(true); // Still needed to indicate a body *could* be sent, allowing Content-Length
+            conn.setRequestProperty("Content-Length", "0");
+            // REMOVED: conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            // NO DATA is written to conn.getOutputStream()
 
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
 
-            // Write the body
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(outputBytes);
-                os.flush(); // Ensure all data is sent
-            }
+            // Explicitly call connect() before getResponseCode() can be good practice,
+            // though getResponseCode() usually implicitly connects.
+            // conn.connect(); // Optional: some prefer to explicitly call it.
 
             int responseCode = conn.getResponseCode();
             Log.d(TAG, "getGuestToken: Response Code: " + responseCode);
             Log.d(TAG, "getGuestToken: Response Message: " + conn.getResponseMessage());
-
 
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
@@ -184,7 +175,6 @@ public class GofileApiHandler {
             Log.d(TAG, "getContentDetails: Response Code: " + responseCode + " for URL: " + urlString);
             Log.d(TAG, "getContentDetails: Response Message: " + conn.getResponseMessage());
 
-
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                 String inputLine;
@@ -194,7 +184,6 @@ public class GofileApiHandler {
                 }
                 in.close();
                 Log.d(TAG, "getContentDetails: OK Response Body: " + response.toString());
-
 
                 JSONObject jsonResponse = new JSONObject(response.toString());
                 if ("ok".equals(jsonResponse.getString("status"))) {
