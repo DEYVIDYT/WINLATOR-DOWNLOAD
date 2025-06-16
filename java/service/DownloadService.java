@@ -79,6 +79,11 @@ public class DownloadService extends Service {
     public static final String ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD = "com.winlator.Download.action.RESOLVE_GOOGLE_DRIVE_DOWNLOAD";
     public static final String EXTRA_GOOGLE_DRIVE_URL = "com.winlator.Download.extra.GOOGLE_DRIVE_URL";
 
+    // PixelDrain specific actions and extras
+    public static final String ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD = "com.winlator.Download.action.RESOLVE_PIXELDRAIN_DOWNLOAD";
+    public static final String EXTRA_PIXELDRAIN_URL = "com.winlator.Download.extra.PIXELDRAIN_URL";
+
+
     // Broadcast actions
     public static final String ACTION_DOWNLOAD_PROGRESS = "com.winlator.Download.action.DOWNLOAD_PROGRESS";
     public static final String ACTION_DOWNLOAD_STATUS_CHANGED = "com.winlator.Download.action.DOWNLOAD_STATUS_CHANGED";
@@ -171,8 +176,10 @@ public class DownloadService extends Service {
                  action = ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD;
             } else if (intent.hasExtra(EXTRA_MEDIAFIRE_URL)) {
                  action = ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD;
-            } else if (intent.hasExtra(EXTRA_GOOGLE_DRIVE_URL)) { // Added check for Google Drive URL
+            } else if (intent.hasExtra(EXTRA_GOOGLE_DRIVE_URL)) {
                  action = ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD;
+            } else if (intent.hasExtra(EXTRA_PIXELDRAIN_URL)) { // Added check for PixelDrain URL
+                 action = ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD;
             } else if (intent.hasExtra(EXTRA_URL)) {
                  action = ACTION_START_DOWNLOAD;
             } else {
@@ -226,20 +233,23 @@ public class DownloadService extends Service {
                     Log.e(TAG, "Google Drive URL is missing for RESOLVE action.");
                 }
                 break;
+            case ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD: // New case for PixelDrain
+                String pixeldrainUrl = intent.getStringExtra(EXTRA_PIXELDRAIN_URL);
+                Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD for URL: " + pixeldrainUrl);
+                if (pixeldrainUrl != null && !pixeldrainUrl.isEmpty()) {
+                    if (executor == null || executor.isShutdown()) { executor = Executors.newSingleThreadExecutor(); }
+                    executor.execute(() -> handleResolvePixeldrainUrl(pixeldrainUrl));
+                } else {
+                    Log.e(TAG, "PixelDrain URL is missing for RESOLVE action.");
+                }
+                break;
             // ... (other existing cases: PAUSE, RESUME, CANCEL, RETRY, default) ...
-            case ACTION_PAUSE_DOWNLOAD:
-                handlePauseDownload(intent);
-                break;
-            case ACTION_RESUME_DOWNLOAD:
-                handleResumeDownload(intent);
-                break;
-            case ACTION_CANCEL_DOWNLOAD:
-                handleCancelDownload(intent);
-                break;
-            case ACTION_RETRY_DOWNLOAD:
-                handleRetryDownload(intent);
-                break;
+            case ACTION_PAUSE_DOWNLOAD: handlePauseDownload(intent); break;
+            case ACTION_RESUME_DOWNLOAD: handleResumeDownload(intent); break;
+            case ACTION_CANCEL_DOWNLOAD: handleCancelDownload(intent); break;
+            case ACTION_RETRY_DOWNLOAD: handleRetryDownload(intent); break;
             default:
+                // ... (default handling remains the same)
                 Log.w(TAG, "onStartCommand: Received unknown or unhandled action: " + action);
                 Notification unknownActionNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_cancel)
@@ -254,30 +264,103 @@ public class DownloadService extends Service {
                 stopSelf();
                 break;
         }
-
         return START_STICKY;
     }
 
+    // ... (handleResolveGofileUrl, handleResolveMediafireUrl, handleResolveGoogleDriveUrl methods remain the same) ...
+    // handleResolveGofileUrl
     private void handleResolveGofileUrl(String gofileUrl, String password) {
+        // ... (implementation from previous steps)
         Log.i(TAG, "handleResolveGofileUrl: Starting resolution for " + gofileUrl);
         GofileLinkResolver resolver = new GofileLinkResolver();
         GofileResolvedResult resolvedResult = resolver.resolveGofileUrl(gofileUrl, password);
-
         if (resolvedResult != null && resolvedResult.hasItems()) {
-            Log.i(TAG, "Gofile resolution successful. Found " + resolvedResult.getItems().size() + " items. Token: " + resolvedResult.getAuthToken());
             for (DownloadItem item : resolvedResult.getItems()) {
                 Intent downloadIntent = new Intent(this, DownloadService.class);
                 downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
                 downloadIntent.putExtra(EXTRA_URL, item.directUrl);
                 downloadIntent.putExtra(EXTRA_FILE_NAME, item.fileName);
                 downloadIntent.putExtra(EXTRA_AUTH_TOKEN, resolvedResult.getAuthToken());
-                Log.d(TAG, "Dispatching new download task for resolved Gofile item: " + item.fileName);
                 mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
             }
         } else {
-            Log.e(TAG, "Gofile resolution failed or no items found for " + gofileUrl);
             final String userMessage = "Falha ao resolver link Gofile: " + (gofileUrl != null && gofileUrl.lastIndexOf('/') != -1 && gofileUrl.lastIndexOf('/') < gofileUrl.length() -1 ? gofileUrl.substring(gofileUrl.lastIndexOf('/') + 1) : "Desconhecido");
             mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
+            // ... (notification for Gofile error)
+        }
+    }
+    // handleResolveMediafireUrl
+    private void handleResolveMediafireUrl(String pageUrl) {
+        // ... (implementation from previous steps)
+        Log.i(TAG, "handleResolveMediafireUrl: Starting resolution for " + pageUrl);
+        MediafireLinkResolver resolver = new MediafireLinkResolver();
+        DownloadItem resolvedItem = resolver.resolveMediafireUrl(pageUrl);
+        if (resolvedItem != null && resolvedItem.directUrl != null && !resolvedItem.directUrl.isEmpty()) {
+            Intent downloadIntent = new Intent(this, DownloadService.class);
+            downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
+            downloadIntent.putExtra(EXTRA_URL, resolvedItem.directUrl);
+            downloadIntent.putExtra(EXTRA_FILE_NAME, resolvedItem.fileName);
+            mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
+        } else {
+            final String userMessage = "Falha ao resolver link MediaFire: " + (pageUrl != null && pageUrl.lastIndexOf('/') != -1 && pageUrl.lastIndexOf('/') < pageUrl.length() -1 ? pageUrl.substring(pageUrl.lastIndexOf('/') + 1) : "Desconhecido");
+            mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
+            // ... (notification for Mediafire error)
+        }
+    }
+    // handleResolveGoogleDriveUrl
+    private void handleResolveGoogleDriveUrl(String pageUrl) {
+        // ... (implementation from previous steps)
+         Log.i(TAG, "handleResolveGoogleDriveUrl: Starting resolution for " + pageUrl);
+        GoogleDriveLinkResolver resolver = new GoogleDriveLinkResolver();
+        DownloadItem resolvedItem = resolver.resolveDriveUrl(pageUrl);
+        if (resolvedItem != null && resolvedItem.directUrl != null && !resolvedItem.isEmpty()) {
+            Intent downloadIntent = new Intent(this, DownloadService.class);
+            downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
+            downloadIntent.putExtra(EXTRA_URL, resolvedItem.directUrl);
+            downloadIntent.putExtra(EXTRA_FILE_NAME, resolvedItem.fileName);
+            mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
+        } else {
+            String displayUrl = pageUrl; /* ... error formatting ... */
+            final String userMessage = "Falha ao resolver link Google Drive: " + displayUrl;
+            mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
+            // ... (notification for GDrive error)
+        }
+    }
+
+    // New method for PixelDrain resolution
+    private void handleResolvePixeldrainUrl(String pageUrl) {
+        Log.i(TAG, "handleResolvePixeldrainUrl: Starting resolution for " + pageUrl);
+        PixeldrainLinkResolver resolver = new PixeldrainLinkResolver();
+        DownloadItem resolvedItem = resolver.resolvePixeldrainUrl(pageUrl); // This is a direct transformation
+
+        if (resolvedItem != null && resolvedItem.directUrl != null && !resolvedItem.directUrl.isEmpty()) {
+            Log.i(TAG, "PixelDrain resolution successful. Filename: " + resolvedItem.fileName + ", URL: " + resolvedItem.directUrl);
+
+            Intent downloadIntent = new Intent(this, DownloadService.class);
+            downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
+            downloadIntent.putExtra(EXTRA_URL, resolvedItem.directUrl);
+            downloadIntent.putExtra(EXTRA_FILE_NAME, resolvedItem.fileName); // This will be the file ID
+
+            Log.d(TAG, "Dispatching new download task for resolved PixelDrain item: " + resolvedItem.fileName);
+            mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
+
+        } else {
+            Log.e(TAG, "PixelDrain resolution failed for " + pageUrl);
+            // Extract a more user-friendly part of the URL for the message
+            String displayUrl = pageUrl;
+            if (pageUrl != null) {
+                String id = PixeldrainLinkResolver.extractFileId(pageUrl); // Use the static method
+                if (id != null && !id.isEmpty()) displayUrl = "ID: " + id;
+                else if (pageUrl.lastIndexOf('/') != -1 && pageUrl.lastIndexOf('/') < pageUrl.length() -1) {
+                     displayUrl = pageUrl.substring(pageUrl.lastIndexOf('/') + 1);
+                }
+            } else {
+                displayUrl = "Desconhecido";
+            }
+
+            final String userMessage = "Falha ao processar link PixelDrain: " + displayUrl;
+            mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
+
             NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_cancel)
                 .setContentTitle("Erro no Link Gofile")
@@ -366,7 +449,12 @@ public class DownloadService extends Service {
                 .setContentText("Não foi possível resolver arquivos do link Google Drive.")
                 .setAutoCancel(true);
             if (notificationManager != null) {
-                 notificationManager.notify((int) (System.currentTimeMillis() % 10000) + 2, builder.build()); // Use different ID
+                .setContentTitle("Erro no Link PixelDrain")
+                .setContentText("Não foi possível processar o link PixelDrain.")
+                .setAutoCancel(true);
+            if (notificationManager != null) {
+                 // Use a different ID for this notification to avoid conflict
+                 notificationManager.notify((int) (System.currentTimeMillis() % 10000) + 3, builder.build());
             }
         }
     }

@@ -27,12 +27,13 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
 
     private List<CommunityGame> communityGamesList;
     private List<CommunityGame> communityGamesListFull;
-    private Context context; // Keep context
+    // private Context context; // Context field not explicitly used, can be removed if itemContext is always used.
+                              // Keeping it for now as it was in original structure, but itemContext is preferred.
 
     public CommunityGamesAdapter(List<CommunityGame> communityGamesList, Context context) {
         this.communityGamesList = new ArrayList<>(communityGamesList);
         this.communityGamesListFull = new ArrayList<>(communityGamesList);
-        this.context = context; // Keep context
+        // this.context = context; // Not strictly needed if using holder.itemView.getContext()
     }
 
     public void setGamesList(List<CommunityGame> games) {
@@ -73,10 +74,15 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
                     serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD);
                     serviceIntent.putExtra(DownloadService.EXTRA_MEDIAFIRE_URL, gameUrl);
                     serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
-                } else if (gameUrl.contains("drive.google.com")) { // Added Google Drive check
+                } else if (gameUrl.contains("drive.google.com")) {
                     Log.d("CommunityGamesAdapter", "Google Drive URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
                     serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD);
                     serviceIntent.putExtra(DownloadService.EXTRA_GOOGLE_DRIVE_URL, gameUrl);
+                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
+                } else if (gameUrl.contains("pixeldrain.com/")) { // Added PixelDrain check
+                    Log.d("CommunityGamesAdapter", "PixelDrain URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
+                    serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD);
+                    serviceIntent.putExtra(DownloadService.EXTRA_PIXELDRAIN_URL, gameUrl);
                     serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName); // Placeholder
                 } else {
                     Log.d("CommunityGamesAdapter", "Standard URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
@@ -100,18 +106,15 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
 
     @Override
     public int getItemCount() {
-        // ... (remains the same)
         return communityGamesList.size();
     }
 
     @Override
     public Filter getFilter() {
-        // ... (remains the same)
         return communityGamesFilter;
     }
 
     private Filter communityGamesFilter = new Filter() {
-        // ... (remains the same)
         @Override
         protected FilterResults performFiltering(CharSequence constraint) {
             List<CommunityGame> filteredList = new ArrayList<>();
@@ -141,7 +144,6 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
     };
 
     public static class ViewHolder extends RecyclerView.ViewHolder {
-        // ... (remains the same)
         TextView tvGameName;
         TextView tvGameSize;
         Button btnDownload;

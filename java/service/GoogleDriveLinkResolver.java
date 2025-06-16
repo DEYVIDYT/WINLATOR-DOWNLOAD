@@ -23,13 +23,6 @@ public class GoogleDriveLinkResolver {
     private static final Pattern CONFIRM_TOKEN_PATTERN_2 = Pattern.compile("name=\"confirm\"\\s+value=\"([0-9A-Za-z_-]+)\"", Pattern.CASE_INSENSITIVE);
     private static final Pattern UUID_TOKEN_PATTERN = Pattern.compile("name=\"uuid\"\\s+value=\"([0-9A-Za-z_-]+)\"", Pattern.CASE_INSENSITIVE);
 
-    // Corrected patterns for filename extraction
-    private static final Pattern FILENAME_STAR_PATTERN = Pattern.compile("filename\\*=UTF-8''([^;"']*)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern FILENAME_QUOTED_PATTERN = Pattern.compile("filename=\"(.*?)\"", Pattern.CASE_INSENSITIVE);
-    // Fallback for unquoted filename, less common but possible
-    private static final Pattern FILENAME_UNQUOTED_PATTERN = Pattern.compile("filename=([^;]+)", Pattern.CASE_INSENSITIVE);
-
-
     static {
         CookieManager cookieManager = new CookieManager();
         cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
@@ -38,22 +31,18 @@ public class GoogleDriveLinkResolver {
     }
 
     public DownloadItem resolveDriveUrl(String pageUrl) {
-        // ... (resolveDriveUrl method remains the same from previous correct version)
         Log.d(TAG, "Attempting to resolve Google Drive URL: " + pageUrl);
-
         String fileId = GoogleDriveUtils.extractDriveId(pageUrl);
         if (fileId == null) {
             Log.e(TAG, "Could not extract File ID from URL: " + pageUrl);
             return null;
         }
         Log.d(TAG, "Extracted File ID: " + fileId);
-
         String initialDownloadUrl = BASE_FILE_URL + fileId;
         return attemptDownload(initialDownloadUrl, fileId, 0);
     }
 
     private DownloadItem attemptDownload(String downloadUrl, String fileId, int attemptDepth) {
-        // ... (attemptDownload method remains the same from previous correct version)
         Log.d(TAG, "Attempting download from URL: " + downloadUrl + " (Attempt depth: " + attemptDepth + ")");
         if (attemptDepth > 2) {
             Log.e(TAG, "Max download attempts reached for ID: " + fileId);
@@ -89,7 +78,7 @@ public class GoogleDriveLinkResolver {
                         Log.w(TAG, "Could not parse Content-Length: " + contentLengthHeader);
                     }
                 }
-                 if (filename == null || filename.isEmpty()) {
+                if (filename == null || filename.isEmpty()) {
                     Log.w(TAG, "Filename extracted as null or empty, using file ID as fallback name.");
                     filename = fileId;
                 }
@@ -97,38 +86,35 @@ public class GoogleDriveLinkResolver {
                 return new DownloadItem(filename, connection.getURL().toString(), fileSize, null);
             }
 
-            Log.d(TAG, "No Content-Disposition. Reading page content to check for confirmation or errors.");
             String contentType = connection.getContentType();
             if (contentType == null || !contentType.toLowerCase().contains("text/html")) {
-                 Log.w(TAG, "Content-Type is not HTML (" + contentType + "). Cannot parse for confirmation. URL: " + downloadUrl);
-                 if (responseCode != HttpURLConnection.HTTP_OK && connection.getErrorStream() != null) {
+                Log.w(TAG, "Content-Type is not HTML (" + contentType + "). Cannot parse for confirmation. URL: " + downloadUrl);
+                if (responseCode != HttpURLConnection.HTTP_OK && connection.getErrorStream() != null) {
                     String errorPageContent = readStreamToString(new BufferedReader(new InputStreamReader(connection.getErrorStream(), StandardCharsets.UTF_8)));
                     if (errorPageContent.contains("Google Drive - Quota exceeded") || errorPageContent.contains("downloadQuotaExceeded")) {
-                        Log.e(TAG, "Google Drive Quota Exceeded for ID: " + fileId + ". URL: " + downloadUrl);
-                    } else if (errorPageContent.contains("Too many users have viewed or downloaded this file recently")) {
-                         Log.e(TAG, "Google Drive 'Too many users' error for ID: " + fileId + ". URL: " + downloadUrl);
+                        Log.e(TAG, "Google Drive Quota Exceeded for ID: " + fileId);
                     }
-                 }
-                 return null;
+                }
+                return null;
             }
 
             String pageContent;
             if (responseCode == HttpURLConnection.HTTP_OK) {
-                 pageContent = readStreamToString(new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8)));
+                pageContent = readStreamToString(new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8)));
             } else if (connection.getErrorStream() != null) {
-                 pageContent = readStreamToString(new BufferedReader(new InputStreamReader(connection.getErrorStream(), StandardCharsets.UTF_8)));
+                pageContent = readStreamToString(new BufferedReader(new InputStreamReader(connection.getErrorStream(), StandardCharsets.UTF_8)));
             } else {
-                 Log.e(TAG, "No content to read for confirmation/error. URL: " + downloadUrl);
-                 return null;
+                Log.e(TAG, "No content to read for confirmation/error. URL: " + downloadUrl);
+                return null;
             }
             connection.disconnect();
 
             if (pageContent.contains("Google Drive - Quota exceeded") || pageContent.contains("downloadQuotaExceeded")) {
-                Log.e(TAG, "Google Drive Quota Exceeded for ID: " + fileId + ". URL: " + downloadUrl);
+                Log.e(TAG, "Quota exceeded.");
                 return null;
             }
             if (pageContent.contains("Too many users have viewed or downloaded this file recently")) {
-                Log.e(TAG, "Google Drive 'Too many users' error for ID: " + fileId + ". URL: " + downloadUrl);
+                Log.e(TAG, "Too many users error.");
                 return null;
             }
 
@@ -150,19 +136,18 @@ public class GoogleDriveLinkResolver {
             }
 
             if (confirmToken != null) {
-                Log.i(TAG, "Found confirmation token: " + confirmToken + (uuidToken != null ? " and UUID: " + uuidToken : ""));
                 String confirmationUrl = BASE_FILE_URL + fileId + "&confirm=" + confirmToken;
                 if (uuidToken != null) {
                     confirmationUrl += "&uuid=" + uuidToken;
                 }
                 return attemptDownload(confirmationUrl, fileId, attemptDepth + 1);
             } else {
-                Log.w(TAG, "No confirmation token found on page for ID: " + fileId + ". URL: " + downloadUrl);
+                Log.w(TAG, "No confirmation token found.");
                 return null;
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Exception during Google Drive resolution for " + downloadUrl, e);
+            Log.e(TAG, "Exception during Google Drive resolution", e);
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -175,65 +160,31 @@ public class GoogleDriveLinkResolver {
         StringBuilder stringBuilder = new StringBuilder();
         String line;
         while ((line = reader.readLine()) != null) {
-            stringBuilder.append(line).append("\n");
+            stringBuilder.append(line).append("\n"); // Using \n for literal
+ in logs if multi-line
         }
         reader.close();
         return stringBuilder.toString();
     }
 
-    // MODIFIED METHOD
     private String extractFilenameFromContentDisposition(String contentDisposition) {
-        if (contentDisposition == null) {
-            return null;
-        }
-        Log.d(TAG, "Extracting filename from Content-Disposition: " + contentDisposition);
-        String filename = null;
-
-        // 1. Try filename*=UTF-8''... pattern first (handles special characters well)
-        Matcher starMatcher = FILENAME_STAR_PATTERN.matcher(contentDisposition);
-        if (starMatcher.find()) {
-            filename = starMatcher.group(1);
-            Log.d(TAG, "Found filename using filename* pattern: " + filename);
-            // This value is usually URL-encoded as per RFC 5987/2231
+        if (contentDisposition == null) return null;
+        // Corrected regex provided by the user
+        Pattern pattern = Pattern.compile("filename\\*?=['\"]?(?:UTF-8''|UTF-8%27%27)?([^;\"']+)[\"']?", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(contentDisposition);
+        if (matcher.find()) {
             try {
-                filename = URLDecoder.decode(filename, StandardCharsets.UTF_8.name());
-                Log.d(TAG, "Decoded filename (from filename*): " + filename);
+                String filename = matcher.group(1);
+                // It's important to URLDecode values from filename* as they are often %-encoded
+                // For plain filename="...", decoding might also be needed for %20 etc.
+                return URLDecoder.decode(filename, StandardCharsets.UTF_8.name());
             } catch (Exception e) {
-                Log.w(TAG, "Failed to URL decode filename from filename*: " + filename, e);
-                // Use raw if decoding fails, though it might be percent-encoded
+                Log.w(TAG, "Failed to decode filename from Content-Disposition: " + matcher.group(1), e);
+                // Fallback to the raw matched group if decoding fails (e.g., if not actually URL encoded in a way decoder expects)
+                return matcher.group(1);
             }
-            return filename; // Return decoded filename from filename*
         }
-
-        // 2. If filename* not found, try filename="..."
-        Matcher quotedMatcher = FILENAME_QUOTED_PATTERN.matcher(contentDisposition);
-        if (quotedMatcher.find()) {
-            filename = quotedMatcher.group(1);
-            Log.d(TAG, "Found filename using filename=\"...\" pattern: " + filename);
-            // This might still contain escaped quotes or other things, but usually simpler.
-            // URLDecoding might not always be necessary here, but can handle cases like %20 for space.
-            // For now, we assume it doesn't need aggressive decoding beyond what sanitize handles.
-            // The Python script's FILENAME_PATTERN is 'filename="(.*?)"' and it doesn't explicitly decode this part.
-            return filename;
-        }
-
-        // 3. Fallback for unquoted filename (less common for HTTP Content-Disposition but possible)
-        // Example: filename=myfile.txt
-        // This should be used last as it's less specific.
-        Matcher unquotedMatcher = FILENAME_UNQUOTED_PATTERN.matcher(contentDisposition);
-        if (unquotedMatcher.find()) {
-            filename = unquotedMatcher.group(1).trim(); // Trim spaces
-             // If the value was quoted but quotes were consumed by earlier regex, this might catch part of it.
-             // Or if it's truly unquoted and ends with a semicolon for another parameter.
-            if (filename.endsWith(";")) { // Simple check if it captured too much
-                filename = filename.substring(0, filename.length() -1).trim();
-            }
-            Log.d(TAG, "Found filename using unquoted filename= pattern: " + filename);
-            return filename;
-        }
-
-
-        Log.w(TAG, "Filename could not be extracted from Content-Disposition: " + contentDisposition);
+        Log.w(TAG, "Filename pattern not matched in Content-Disposition: " + contentDisposition);
         return null;
     }
 }
