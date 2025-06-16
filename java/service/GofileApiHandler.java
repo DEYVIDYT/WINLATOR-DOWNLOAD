@@ -5,17 +5,19 @@ import org.json.JSONObject;
 import org.json.JSONException;
 
 import java.io.BufferedReader;
-// DataOutputStream is not strictly needed if we are sending an empty body with Content-Length: 0
-// import java.io.DataOutputStream;
+import java.io.DataOutputStream; // For writing to output stream
 import java.io.InputStreamReader;
+import java.io.OutputStream; // For generic output stream
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
+// HashMap not used, can be removed if not planned for other methods
+// import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
+// Map not used, can be removed if not planned for other methods
+// import java.util.Map;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -23,18 +25,17 @@ public class GofileApiHandler {
 
     private static final String TAG = "GofileApiHandler";
     private static final String API_BASE_URL = "https://api.gofile.io";
-    private static final String USER_AGENT = "Mozilla/5.0"; // Similar to the Python script
+    private static final String USER_AGENT = "Mozilla/5.0";
 
-    // Inner class/record for file details
     public static class GofileEntry {
         public String id;
-        public String type; // "file" or "folder"
+        public String type;
         public String name;
-        public String directLink; // Only for files
-        public long size; // Only for files
-        public String code; // Only for files (childId)
+        public String directLink;
+        public long size;
+        public String code;
         public String parentFolderId;
-        public List<GofileEntry> children; // Only for folders
+        public List<GofileEntry> children;
 
         public GofileEntry() {
             this.children = new ArrayList<>();
@@ -55,7 +56,6 @@ public class GofileApiHandler {
         }
     }
 
-
     public String getGuestToken() {
         HttpURLConnection conn = null;
         try {
@@ -63,21 +63,31 @@ public class GofileApiHandler {
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("User-Agent", USER_AGENT);
-            conn.setRequestProperty("Accept", "*/*");
+            conn.setRequestProperty("Accept", "*/*"); // Python script uses */*
             conn.setRequestProperty("Accept-Encoding", "gzip, deflate, br");
             conn.setRequestProperty("Connection", "keep-alive");
 
-            // Modification for POST with empty body
-            conn.setDoOutput(true); // Required to send a body, even if empty, or to set Content-Length
-            conn.setRequestProperty("Content-Length", "0");
-            // No data is written to conn.getOutputStream(), effectively sending an empty body.
+            // Modifications for POST with empty JSON body {}
+            String emptyJsonBody = "{}";
+            byte[] outputBytes = emptyJsonBody.getBytes(StandardCharsets.UTF_8);
+
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            conn.setRequestProperty("Content-Length", String.valueOf(outputBytes.length));
+            conn.setDoOutput(true); // Essential for sending a body
 
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
 
-            // It's good practice to get response code after all configurations and potential body write
+            // Write the body
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(outputBytes);
+                os.flush(); // Ensure all data is sent
+            }
+
             int responseCode = conn.getResponseCode();
             Log.d(TAG, "getGuestToken: Response Code: " + responseCode);
+            Log.d(TAG, "getGuestToken: Response Message: " + conn.getResponseMessage());
+
 
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
@@ -87,6 +97,7 @@ public class GofileApiHandler {
                     response.append(inputLine);
                 }
                 in.close();
+                Log.d(TAG, "getGuestToken: OK Response Body: " + response.toString());
 
                 JSONObject jsonResponse = new JSONObject(response.toString());
                 if ("ok".equals(jsonResponse.getString("status"))) {
@@ -96,7 +107,6 @@ public class GofileApiHandler {
                 }
             } else {
                 Log.e(TAG, "getGuestToken: HTTP Error. Code: " + responseCode + " Message: " + conn.getResponseMessage());
-                // Log error stream if available
                 if (conn.getErrorStream() != null) {
                     BufferedReader errorStream = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
                     String errorLine;
@@ -106,6 +116,8 @@ public class GofileApiHandler {
                     }
                     errorStream.close();
                     Log.e(TAG, "getGuestToken: Error stream response: " + errorResponse.toString());
+                } else {
+                    Log.e(TAG, "getGuestToken: No error stream available, but response code was not OK.");
                 }
             }
         } catch (Exception e) {
@@ -119,6 +131,7 @@ public class GofileApiHandler {
     }
 
     private String sha256(final String base) {
+        // ... (sha256 implementation remains the same)
         try{
             final MessageDigest digest = MessageDigest.getInstance("SHA-256");
             final byte[] hash = digest.digest(base.getBytes(StandardCharsets.UTF_8));
@@ -137,6 +150,7 @@ public class GofileApiHandler {
     }
 
     public GofileEntry getContentDetails(String contentId, String token, String password) {
+        // ... (getContentDetails implementation remains the same from previous correction)
         if (contentId == null || token == null) {
             Log.e(TAG, "getContentDetails: Content ID or Token is null.");
             return null;
@@ -144,8 +158,6 @@ public class GofileApiHandler {
 
         HttpURLConnection conn = null;
         try {
-            // Construct URL, including password if provided
-            // Added missing sortField and sortDirection parameters
             String urlString = API_BASE_URL + "/contents/" + contentId +
                                "?wt=4fd6sg89d7s6&cache=true&sortField=createTime&sortDirection=1";
             if (password != null && !password.isEmpty()) {
@@ -170,6 +182,8 @@ public class GofileApiHandler {
 
             int responseCode = conn.getResponseCode();
             Log.d(TAG, "getContentDetails: Response Code: " + responseCode + " for URL: " + urlString);
+            Log.d(TAG, "getContentDetails: Response Message: " + conn.getResponseMessage());
+
 
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
@@ -179,10 +193,10 @@ public class GofileApiHandler {
                     response.append(inputLine);
                 }
                 in.close();
+                Log.d(TAG, "getContentDetails: OK Response Body: " + response.toString());
+
 
                 JSONObject jsonResponse = new JSONObject(response.toString());
-                Log.d(TAG, "getContentDetails: Full API Response: " + response.toString());
-
                 if ("ok".equals(jsonResponse.getString("status"))) {
                     JSONObject data = jsonResponse.getJSONObject("data");
                      if (data.has("passwordStatus") && !"passwordOk".equals(data.getString("passwordStatus"))) {
@@ -204,6 +218,8 @@ public class GofileApiHandler {
                     }
                     errorStream.close();
                     Log.e(TAG, "getContentDetails: Error stream response: " + errorResponse.toString());
+                } else {
+                    Log.e(TAG, "getContentDetails: No error stream available, but response code was not OK.");
                 }
             }
         } catch (Exception e) {
@@ -217,6 +233,7 @@ public class GofileApiHandler {
     }
 
     private GofileEntry parseGofileEntry(JSONObject data, String parentId) throws JSONException {
+        // ... (parseGofileEntry implementation remains the same)
         GofileEntry entry = new GofileEntry();
         entry.id = data.getString("id");
         entry.type = data.getString("type");
