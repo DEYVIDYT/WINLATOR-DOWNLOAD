@@ -2,8 +2,6 @@ package com.winlator.Download.adapter;
 
 import android.content.Context;
 import android.content.Intent;
-// Uri.parse is no longer needed here if we don't open browser directly
-// import android.net.Uri;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -12,15 +10,15 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Filter;
 import android.widget.Filterable;
-import android.widget.Toast; // Added for Toast message
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.winlator.Download.R;
 import com.winlator.Download.model.CommunityGame;
-import com.winlator.Download.service.DownloadService; // Added for DownloadService
-import com.winlator.Download.DownloadManagerActivity; // Added for navigation
+import com.winlator.Download.service.DownloadService;
+import com.winlator.Download.DownloadManagerActivity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,12 +27,12 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
 
     private List<CommunityGame> communityGamesList;
     private List<CommunityGame> communityGamesListFull;
-    private Context context; // Already present, ensure it's used or removed if not needed by adapter itself
+    private Context context;
 
     public CommunityGamesAdapter(List<CommunityGame> communityGamesList, Context context) {
         this.communityGamesList = new ArrayList<>(communityGamesList);
         this.communityGamesListFull = new ArrayList<>(communityGamesList);
-        this.context = context; // Keep context if needed for Toast or other UI from adapter
+        this.context = context;
     }
 
     public void setGamesList(List<CommunityGame> games) {
@@ -42,7 +40,6 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
         this.communityGamesListFull = new ArrayList<>(games);
         notifyDataSetChanged();
     }
-
 
     @NonNull
     @Override
@@ -60,18 +57,22 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
         
         holder.btnDownload.setOnClickListener(v -> {
             String gameUrl = game.getUrl();
-            String gameName = game.getName(); // Get game name for EXTRA_FILE_NAME
-            Context itemContext = holder.itemView.getContext(); // Get context from item view
+            String gameName = game.getName();
+            Context itemContext = holder.itemView.getContext();
 
             if (gameUrl != null && !gameUrl.isEmpty()) {
                 Intent serviceIntent = new Intent(itemContext, DownloadService.class);
 
-                // Check if it's a Gofile URL
                 if (gameUrl.contains("gofile.io/d/") || gameUrl.contains("gofile.io/download/")) {
                     Log.d("CommunityGamesAdapter", "Gofile URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
                     serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD);
                     serviceIntent.putExtra(DownloadService.EXTRA_GOFILE_URL, gameUrl);
-                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName); // Placeholder name
+                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
+                } else if (gameUrl.contains("www.mediafire.com/file/")) { // Added MediaFire check
+                    Log.d("CommunityGamesAdapter", "MediaFire URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
+                    serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD);
+                    serviceIntent.putExtra(DownloadService.EXTRA_MEDIAFIRE_URL, gameUrl);
+                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName); // Placeholder
                 } else {
                     Log.d("CommunityGamesAdapter", "Standard URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
                     serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_START_DOWNLOAD);
@@ -82,7 +83,6 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
                 itemContext.startService(serviceIntent);
                 Toast.makeText(itemContext, "Download iniciado: " + gameName, Toast.LENGTH_SHORT).show();
 
-                // Navigate to DownloadManagerActivity
                 Intent activityIntent = new Intent(itemContext, DownloadManagerActivity.class);
                 itemContext.startActivity(activityIntent);
 

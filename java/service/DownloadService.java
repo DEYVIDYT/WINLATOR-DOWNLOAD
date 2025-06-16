@@ -71,6 +71,10 @@ public class DownloadService extends Service {
     public static final String EXTRA_GOFILE_PASSWORD = "com.winlator.Download.extra.GOFILE_PASSWORD"; // Optional
     public static final String EXTRA_AUTH_TOKEN = "com.winlator.Download.extra.AUTH_TOKEN";
 
+    // MediaFire specific actions and extras
+    public static final String ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD = "com.winlator.Download.action.RESOLVE_MEDIAFIRE_DOWNLOAD";
+    public static final String EXTRA_MEDIAFIRE_URL = "com.winlator.Download.extra.MEDIAFIRE_URL";
+
     // Broadcast actions
     public static final String ACTION_DOWNLOAD_PROGRESS = "com.winlator.Download.action.DOWNLOAD_PROGRESS";
     public static final String ACTION_DOWNLOAD_STATUS_CHANGED = "com.winlator.Download.action.DOWNLOAD_STATUS_CHANGED";
@@ -106,7 +110,9 @@ public class DownloadService extends Service {
             broadcastManager = LocalBroadcastManager.getInstance(this);
             createNotificationChannel();
             executor = Executors.newSingleThreadExecutor(); // Initialize executor
-            mainThreadHandler = new Handler(Looper.getMainLooper());
+            if (mainThreadHandler == null) { // Ensure initialized
+                mainThreadHandler = new Handler(Looper.getMainLooper());
+            }
             // Verificar e corrigir status de downloads ao iniciar o serviço
             verifyAndCorrectDownloadStatuses();
         } catch (Throwable t) {
@@ -155,11 +161,17 @@ public class DownloadService extends Service {
 
         String action = intent.getStringExtra(EXTRA_ACTION);
         if (action == null) {
-            // Check if it's a Gofile URL to default to resolve action
             if (intent.hasExtra(EXTRA_GOFILE_URL)) {
                  action = ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD;
+            } else if (intent.hasExtra(EXTRA_MEDIAFIRE_URL)) { // Added check for MediaFire URL
+                 action = ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD;
+            } else if (intent.hasExtra(EXTRA_URL)) { // If it has EXTRA_URL, assume it's a direct download
+                 action = ACTION_START_DOWNLOAD;
             } else {
-                 action = ACTION_START_DOWNLOAD; // Default action if no specific action provided
+                 Log.w(TAG, "onStartCommand: Intent has no action and no recognizable URL extra. Stopping.");
+                 checkStopForeground();
+                 stopSelf(); // Stop if intent is not understood
+                 return START_STICKY;
             }
         }
         Log.d(TAG, "onStartCommand: Effective action: " + action);
@@ -171,39 +183,55 @@ public class DownloadService extends Service {
                 break;
             case ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD:
                 String gofileUrl = intent.getStringExtra(EXTRA_GOFILE_URL);
-                String gofilePassword = intent.getStringExtra(EXTRA_GOFILE_PASSWORD); // Will be null if not set
+                String gofilePassword = intent.getStringExtra(EXTRA_GOFILE_PASSWORD);
                 Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD for URL: " + gofileUrl);
                 if (gofileUrl != null && !gofileUrl.isEmpty()) {
                     if (executor == null || executor.isShutdown()) {
-                         executor = Executors.newSingleThreadExecutor(); // Ensure executor is alive
+                         executor = Executors.newSingleThreadExecutor();
                     }
                     executor.execute(() -> handleResolveGofileUrl(gofileUrl, gofilePassword));
                 } else {
                     Log.e(TAG, "Gofile URL is missing for RESOLVE action.");
-                    // Potentially stop service if this was the only command
+                }
+                break;
+            case ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD: // New case for MediaFire
+                String mediafireUrl = intent.getStringExtra(EXTRA_MEDIAFIRE_URL);
+                Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD for URL: " + mediafireUrl);
+                if (mediafireUrl != null && !mediafireUrl.isEmpty()) {
+                    if (executor == null || executor.isShutdown()) {
+                         executor = Executors.newSingleThreadExecutor();
+                    }
+                    executor.execute(() -> handleResolveMediafireUrl(mediafireUrl));
+                } else {
+                    Log.e(TAG, "MediaFire URL is missing for RESOLVE action.");
                 }
                 break;
             case ACTION_PAUSE_DOWNLOAD:
                 handlePauseDownload(intent);
                 break;
-            case ACTION_RESUME_DOWNLOAD:
+            // ... (other existing cases: RESUME, CANCEL, RETRY) ...
+             case ACTION_RESUME_DOWNLOAD: // Copied from existing for completeness
                 handleResumeDownload(intent);
                 break;
-            case ACTION_CANCEL_DOWNLOAD:
+            case ACTION_CANCEL_DOWNLOAD: // Copied from existing for completeness
                 handleCancelDownload(intent);
                 break;
-            case ACTION_RETRY_DOWNLOAD:
+            case ACTION_RETRY_DOWNLOAD: // Copied from existing for completeness
                 handleRetryDownload(intent);
                 break;
             default:
                 Log.w(TAG, "onStartCommand: Received unknown or unhandled action: " + action);
+                // ... (existing default error handling)
                 Notification unknownActionNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_cancel)
+                    .setSmallIcon(R.drawable.ic_cancel) // Ensure this drawable exists
                     .setContentTitle("Download Service")
-                    .setContentText("Ação desconhecida no serviço de download.")
+                    .setContentText("Ação de download desconhecida: " + action)
                     .setAutoCancel(true)
                     .build();
-                notificationManager.notify(GENERIC_SERVICE_NOTIFICATION_ID, unknownActionNotification);
+                if (notificationManager != null) { // Check if notificationManager is initialized
+                     notificationManager.notify(GENERIC_SERVICE_NOTIFICATION_ID, unknownActionNotification);
+                }
+                checkStopForeground(); // Ensure service stops if this was a bad command
                 stopSelf();
                 break;
         }
@@ -213,7 +241,7 @@ public class DownloadService extends Service {
 
     private void handleResolveGofileUrl(String gofileUrl, String password) {
         Log.i(TAG, "handleResolveGofileUrl: Starting resolution for " + gofileUrl);
-        GofileLinkResolver resolver = new GofileLinkResolver(); // Uses default GofileApiHandler
+        GofileLinkResolver resolver = new GofileLinkResolver();
         GofileResolvedResult resolvedResult = resolver.resolveGofileUrl(gofileUrl, password);
 
         if (resolvedResult != null && resolvedResult.hasItems()) {
@@ -223,27 +251,58 @@ public class DownloadService extends Service {
                 downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
                 downloadIntent.putExtra(EXTRA_URL, item.directUrl);
                 downloadIntent.putExtra(EXTRA_FILE_NAME, item.fileName);
-                // IMPORTANT: Pass the auth token obtained during resolution
                 downloadIntent.putExtra(EXTRA_AUTH_TOKEN, resolvedResult.getAuthToken());
-
-                Log.d(TAG, "Dispatching new download task for resolved Gofile item: " + item.fileName + " with token.");
+                Log.d(TAG, "Dispatching new download task for resolved Gofile item: " + item.fileName);
                 mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
             }
         } else {
             Log.e(TAG, "Gofile resolution failed or no items found for " + gofileUrl);
-            final String userMessage = "Failed to resolve Gofile link: " + (gofileUrl != null ? gofileUrl.substring(gofileUrl.lastIndexOf('/') + 1) : "Unknown");
+            final String userMessage = "Falha ao resolver link Gofile: " + (gofileUrl != null ? gofileUrl.substring(gofileUrl.lastIndexOf('/') + 1) : "Desconhecido");
+            mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_cancel)
+                .setContentTitle("Erro no Link Gofile")
+                .setContentText("Não foi possível resolver arquivos do link Gofile.")
+                .setAutoCancel(true);
+            if (notificationManager != null) {
+                notificationManager.notify((int) (System.currentTimeMillis() % 10000), builder.build());
+            }
+        }
+    }
+
+
+    // New method for MediaFire resolution
+    private void handleResolveMediafireUrl(String pageUrl) {
+        Log.i(TAG, "handleResolveMediafireUrl: Starting resolution for " + pageUrl);
+        MediafireLinkResolver resolver = new MediafireLinkResolver();
+        DownloadItem resolvedItem = resolver.resolveMediafireUrl(pageUrl);
+
+        if (resolvedItem != null && resolvedItem.directUrl != null && !resolvedItem.directUrl.isEmpty()) {
+            Log.i(TAG, "MediaFire resolution successful. Filename: " + resolvedItem.fileName + ", URL: " + resolvedItem.directUrl);
+
+            Intent downloadIntent = new Intent(this, DownloadService.class);
+            downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
+            downloadIntent.putExtra(EXTRA_URL, resolvedItem.directUrl);
+            downloadIntent.putExtra(EXTRA_FILE_NAME, resolvedItem.fileName);
+            // No EXTRA_AUTH_TOKEN needed for MediaFire direct links typically
+
+            Log.d(TAG, "Dispatching new download task for resolved MediaFire item: " + resolvedItem.fileName);
+            mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
+
+        } else {
+            Log.e(TAG, "MediaFire resolution failed or no items found for " + pageUrl);
+            final String userMessage = "Falha ao resolver link MediaFire: " + (pageUrl != null ? pageUrl.substring(pageUrl.lastIndexOf('/') + 1) : "Desconhecido");
             mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
 
             NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_cancel) // Ensure ic_cancel exists
-                .setContentTitle("Gofile Link Error")
-                .setContentText("Could not resolve files from Gofile link.")
+                .setSmallIcon(R.drawable.ic_cancel)
+                .setContentTitle("Erro no Link MediaFire")
+                .setContentText("Não foi possível resolver arquivos do link MediaFire.")
                 .setAutoCancel(true);
-            // Use a unique ID for this specific error notification
-            notificationManager.notify((int) (System.currentTimeMillis() % 10000), builder.build());
+            if (notificationManager != null) {
+                 notificationManager.notify((int) (System.currentTimeMillis() % 10000) + 1, builder.build()); // Use different ID from Gofile error
+            }
         }
-        // After attempting to resolve and queue, check if the service should stop.
-        checkStopForeground();
     }
     
     // Método para verificar e corrigir status de downloads fantasmas
