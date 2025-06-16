@@ -96,11 +96,9 @@ public class GofileLinkResolver {
         }
 
         // Construct API URL
-        // The wt (website token) parameter might be optional if using Bearer token.
-        // Test to see if it's needed. Based on some API docs, it might be for unauthenticated shares.
-        // For authenticated, it might be optional or different. Let's try without it first if Bearer token is used.
-        // String apiUrl = "https://api.gofile.io/contents/" + contentId + "?wt=4fd6sg89d7s6&cache=true";
-        String apiUrl = "https://api.gofile.io/contents/" + contentId + "?cache=true"; // Simplified, relying on Bearer token
+        // The wt (website token) parameter might be optional if using Bearer token, but the python script includes it.
+        // Re-adding wt and sort parameters to match python script.
+        String apiUrl = "https://api.gofile.io/contents/" + contentId + "?wt=4fd6sg89d7s6&cache=true&sortField=createTime&sortDirection=1";
 
         if (hashedPassword != null) {
             try {
