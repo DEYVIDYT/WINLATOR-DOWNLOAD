@@ -75,6 +75,10 @@ public class DownloadService extends Service {
     public static final String ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD = "com.winlator.Download.action.RESOLVE_MEDIAFIRE_DOWNLOAD";
     public static final String EXTRA_MEDIAFIRE_URL = "com.winlator.Download.extra.MEDIAFIRE_URL";
 
+    // Google Drive specific actions and extras
+    public static final String ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD = "com.winlator.Download.action.RESOLVE_GOOGLE_DRIVE_DOWNLOAD";
+    public static final String EXTRA_GOOGLE_DRIVE_URL = "com.winlator.Download.extra.GOOGLE_DRIVE_URL";
+
     // Broadcast actions
     public static final String ACTION_DOWNLOAD_PROGRESS = "com.winlator.Download.action.DOWNLOAD_PROGRESS";
     public static final String ACTION_DOWNLOAD_STATUS_CHANGED = "com.winlator.Download.action.DOWNLOAD_STATUS_CHANGED";
@@ -109,7 +113,9 @@ public class DownloadService extends Service {
             dbHelper = new SQLiteHelper(this);
             broadcastManager = LocalBroadcastManager.getInstance(this);
             createNotificationChannel();
-            executor = Executors.newSingleThreadExecutor(); // Initialize executor
+            if (executor == null || executor.isShutdown()) { // Ensure executor is initialized
+                executor = Executors.newSingleThreadExecutor();
+            }
             if (mainThreadHandler == null) { // Ensure initialized
                 mainThreadHandler = new Handler(Looper.getMainLooper());
             }
@@ -163,9 +169,11 @@ public class DownloadService extends Service {
         if (action == null) {
             if (intent.hasExtra(EXTRA_GOFILE_URL)) {
                  action = ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD;
-            } else if (intent.hasExtra(EXTRA_MEDIAFIRE_URL)) { // Added check for MediaFire URL
+            } else if (intent.hasExtra(EXTRA_MEDIAFIRE_URL)) {
                  action = ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD;
-            } else if (intent.hasExtra(EXTRA_URL)) { // If it has EXTRA_URL, assume it's a direct download
+            } else if (intent.hasExtra(EXTRA_GOOGLE_DRIVE_URL)) { // Added check for Google Drive URL
+                 action = ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD;
+            } else if (intent.hasExtra(EXTRA_URL)) {
                  action = ACTION_START_DOWNLOAD;
             } else {
                  Log.w(TAG, "onStartCommand: Intent has no action and no recognizable URL extra. Stopping.");
@@ -206,32 +214,43 @@ public class DownloadService extends Service {
                     Log.e(TAG, "MediaFire URL is missing for RESOLVE action.");
                 }
                 break;
+            case ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD: // New case for Google Drive
+                String googleDriveUrl = intent.getStringExtra(EXTRA_GOOGLE_DRIVE_URL);
+                Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD for URL: " + googleDriveUrl);
+                if (googleDriveUrl != null && !googleDriveUrl.isEmpty()) {
+                     if (executor == null || executor.isShutdown()) {
+                         executor = Executors.newSingleThreadExecutor();
+                    }
+                    executor.execute(() -> handleResolveGoogleDriveUrl(googleDriveUrl));
+                } else {
+                    Log.e(TAG, "Google Drive URL is missing for RESOLVE action.");
+                }
+                break;
+            // ... (other existing cases: PAUSE, RESUME, CANCEL, RETRY, default) ...
             case ACTION_PAUSE_DOWNLOAD:
                 handlePauseDownload(intent);
                 break;
-            // ... (other existing cases: RESUME, CANCEL, RETRY) ...
-             case ACTION_RESUME_DOWNLOAD: // Copied from existing for completeness
+            case ACTION_RESUME_DOWNLOAD:
                 handleResumeDownload(intent);
                 break;
-            case ACTION_CANCEL_DOWNLOAD: // Copied from existing for completeness
+            case ACTION_CANCEL_DOWNLOAD:
                 handleCancelDownload(intent);
                 break;
-            case ACTION_RETRY_DOWNLOAD: // Copied from existing for completeness
+            case ACTION_RETRY_DOWNLOAD:
                 handleRetryDownload(intent);
                 break;
             default:
                 Log.w(TAG, "onStartCommand: Received unknown or unhandled action: " + action);
-                // ... (existing default error handling)
                 Notification unknownActionNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_cancel) // Ensure this drawable exists
+                    .setSmallIcon(R.drawable.ic_cancel)
                     .setContentTitle("Download Service")
                     .setContentText("Ação de download desconhecida: " + action)
                     .setAutoCancel(true)
                     .build();
-                if (notificationManager != null) { // Check if notificationManager is initialized
+                if (notificationManager != null) {
                      notificationManager.notify(GENERIC_SERVICE_NOTIFICATION_ID, unknownActionNotification);
                 }
-                checkStopForeground(); // Ensure service stops if this was a bad command
+                checkStopForeground();
                 stopSelf();
                 break;
         }
@@ -257,7 +276,7 @@ public class DownloadService extends Service {
             }
         } else {
             Log.e(TAG, "Gofile resolution failed or no items found for " + gofileUrl);
-            final String userMessage = "Falha ao resolver link Gofile: " + (gofileUrl != null ? gofileUrl.substring(gofileUrl.lastIndexOf('/') + 1) : "Desconhecido");
+            final String userMessage = "Falha ao resolver link Gofile: " + (gofileUrl != null && gofileUrl.lastIndexOf('/') != -1 && gofileUrl.lastIndexOf('/') < gofileUrl.length() -1 ? gofileUrl.substring(gofileUrl.lastIndexOf('/') + 1) : "Desconhecido");
             mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
             NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_cancel)
@@ -300,7 +319,54 @@ public class DownloadService extends Service {
                 .setContentText("Não foi possível resolver arquivos do link MediaFire.")
                 .setAutoCancel(true);
             if (notificationManager != null) {
-                 notificationManager.notify((int) (System.currentTimeMillis() % 10000) + 1, builder.build()); // Use different ID from Gofile error
+                 notificationManager.notify((int) (System.currentTimeMillis() % 10000) + 1, builder.build());
+            }
+        }
+    }
+
+    // New method for Google Drive resolution
+    private void handleResolveGoogleDriveUrl(String pageUrl) {
+        Log.i(TAG, "handleResolveGoogleDriveUrl: Starting resolution for " + pageUrl);
+        GoogleDriveLinkResolver resolver = new GoogleDriveLinkResolver(); // Ensure GoogleDriveUtils is available
+        DownloadItem resolvedItem = resolver.resolveDriveUrl(pageUrl);
+
+        if (resolvedItem != null && resolvedItem.directUrl != null && !resolvedItem.directUrl.isEmpty()) {
+            Log.i(TAG, "Google Drive resolution successful. Filename: " + resolvedItem.fileName + ", URL: " + resolvedItem.directUrl + ", Size: " + resolvedItem.size);
+
+            Intent downloadIntent = new Intent(this, DownloadService.class);
+            downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
+            downloadIntent.putExtra(EXTRA_URL, resolvedItem.directUrl);
+            downloadIntent.putExtra(EXTRA_FILE_NAME, resolvedItem.fileName);
+            // If file size is available from resolver, it could be passed to insertDownload or startDownload
+            // For now, relying on DownloadTask to get size from Content-Length of direct URL.
+
+            Log.d(TAG, "Dispatching new download task for resolved Google Drive item: " + resolvedItem.fileName);
+            mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
+
+        } else {
+            Log.e(TAG, "Google Drive resolution failed or no items found for " + pageUrl);
+            // Extract a more user-friendly part of the URL for the message
+            String displayUrl = pageUrl;
+            if (pageUrl != null) {
+                String id = GoogleDriveUtils.extractDriveId(pageUrl); // Use the new util
+                if (id != null) displayUrl = "ID: " + id;
+                else if (pageUrl.lastIndexOf('/') != -1 && pageUrl.lastIndexOf('/') < pageUrl.length() -1) {
+                     displayUrl = pageUrl.substring(pageUrl.lastIndexOf('/') + 1);
+                }
+            } else {
+                displayUrl = "Desconhecido";
+            }
+
+            final String userMessage = "Falha ao resolver link Google Drive: " + displayUrl;
+            mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_cancel)
+                .setContentTitle("Erro no Link Google Drive")
+                .setContentText("Não foi possível resolver arquivos do link Google Drive.")
+                .setAutoCancel(true);
+            if (notificationManager != null) {
+                 notificationManager.notify((int) (System.currentTimeMillis() % 10000) + 2, builder.build()); // Use different ID
             }
         }
     }

@@ -126,10 +126,15 @@ public class ReleasesFragment extends Fragment implements ReleasesAdapter.OnRele
                 serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD);
                 serviceIntent.putExtra(DownloadService.EXTRA_GOFILE_URL, downloadUrl);
                 serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, assetName);
-            } else if (downloadUrl.contains("www.mediafire.com/file/")) { // Added MediaFire check
+            } else if (downloadUrl.contains("www.mediafire.com/file/")) {
                 Log.d(TAG, "MediaFire URL detected: " + downloadUrl);
                 serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD);
                 serviceIntent.putExtra(DownloadService.EXTRA_MEDIAFIRE_URL, downloadUrl);
+                serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, assetName);
+            } else if (downloadUrl.contains("drive.google.com")) { // Added Google Drive check
+                Log.d(TAG, "Google Drive URL detected: " + downloadUrl);
+                serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD);
+                serviceIntent.putExtra(DownloadService.EXTRA_GOOGLE_DRIVE_URL, downloadUrl);
                 serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, assetName); // Placeholder
             } else {
                 Log.d(TAG, "Standard URL detected: " + downloadUrl);
@@ -149,6 +154,7 @@ public class ReleasesFragment extends Fragment implements ReleasesAdapter.OnRele
 
     @Override
     public void onReleaseItemClick(Release release) {
+        // ... (remains the same)
         if (mContext != null) {
             Intent intent = new Intent(mContext, VersionsActivity.class);
             intent.putExtra(VersionsActivity.EXTRA_RELEASE, release);
