@@ -1418,129 +1418,137 @@ public class DownloadService extends Service {
 
                 boolean setupError = false;
                 for (int i = 0; i < this.threadsCount; i++) {
-                    if (isCancelled() || isPaused) { setupError = true; break; }
+                    if (isCancelled() || isPaused) { setupError = true; break; } // Already a single line, but often good to brace complex conditions or breaks
                     long startByte = i * segmentSize;
                     long endByte = (i == this.threadsCount - 1) ? this.totalBytes - 1 : startByte + segmentSize - 1;
                     File partFile = new File(partsDir, "part_" + i);
-                    Log.d(TAG, "Segment " + i + " for " + this.displayFileName + ": Calculated range " + startByte + "-" + endByte + " for part file " + partFile.getName()); // Error 18-23: displayFileName
+                    Log.d(TAG, "Segment " + i + " for " + this.displayFileName + ": Calculated range " + startByte + "-" + endByte + " for part file " + partFile.getName());
                     try {
                         SegmentDownloader segmentTask = new SegmentDownloader(new URL(this.urlString), startByte, endByte, partFile, this.authToken, i);
                         this.segmentFutures.add(this.segmentExecutor.submit(segmentTask));
-                    } catch (MalformedURLException e) { // Should not happen if URL was validated earlier
+                    } catch (MalformedURLException e) {
                         Log.e(TAG, "MalformedURLException for segment " + i + ", URL: " + this.urlString, e);
                         setupError = true;
-                        break;
+                        break; // This break is part of the catch, not the if
                     }
                 }
 
                 boolean allSegmentsSuccess = !setupError;
                 if (allSegmentsSuccess && !isCancelled() && !isPaused) {
                     for (Future<?> future : this.segmentFutures) {
-                        if (isCancelled() || isPaused) { allSegmentsSuccess = false; break; }
+                        if (isCancelled() || isPaused) {
+                            allSegmentsSuccess = false;
+                            break;
+                        }
                         try {
                             future.get(); // Wait for segment to complete
                         } catch (Exception e) {
-                            Log.e(TAG, "A segment download for " + this.displayFileName + " failed or was cancelled during future.get().", e); // Error 18-23: displayFileName
+                            Log.e(TAG, "A segment download for " + this.displayFileName + " failed or was cancelled during future.get().", e);
                             allSegmentsSuccess = false;
                             // Cancel remaining futures if one fails
-                            for(Future<?> f : this.segmentFutures) { if (!f.isDone() && !f.isCancelled()) f.cancel(true); }
+                            for(Future<?> f : this.segmentFutures) {
+                                if (!f.isDone() && !f.isCancelled()) {
+                                    f.cancel(true);
+                                }
+                            }
                             break;
                         }
                     }
-                } else if (!setupError) { // If setup was fine, but then paused or cancelled
-                    allSegmentsSuccess = false; // Mark as not all successful if paused or cancelled during setup or waiting
-                    Log.i(TAG, "Download for " + this.displayFileName + " was cancelled, paused, or setup error before all segment futures could be processed."); // Error 18-23: displayFileName
+                } else if (!setupError) {
+                    allSegmentsSuccess = false;
+                    Log.i(TAG, "Download for " + this.displayFileName + " was cancelled, paused, or setup error before all segment futures could be processed.");
                 }
 
-                if (this.segmentExecutor != null) { // Shutdown executor
-                     if (!allSegmentsSuccess || isCancelled() || isPaused) { this.segmentExecutor.shutdownNow(); }
-                     else { this.segmentExecutor.shutdown(); }
+                if (this.segmentExecutor != null) {
+                     if (!allSegmentsSuccess || isCancelled() || isPaused) {
+                         this.segmentExecutor.shutdownNow();
+                     } else {
+                         this.segmentExecutor.shutdown();
+                     }
                 }
 
-                if (isCancelled()) {
-                    Log.i(TAG, "Download cancelled, cleaning up parts for " + this.displayFileName); // Error 18-23: displayFileName
+                if (isCancelled()) { // Corrected to single braces
+                    Log.i(TAG, "Download cancelled, cleaning up parts for " + this.displayFileName);
                     deleteRecursive(partsDir);
                     return null;
                 }
-                if (isPaused) { // Check local isPaused flag for tasks that were paused by user action
-                    Log.i(TAG, "Download paused for " + this.displayFileName + ". Parts retained for potential resume."); // Error 18-23: displayFileName
+                if (isPaused) { // Corrected to single braces
+                    Log.i(TAG, "Download paused for " + this.displayFileName + ". Parts retained for potential resume.");
                     return null;
                 }
 
                 if (allSegmentsSuccess) {
-                     // Sanity check total downloaded bytes after all segments attempt completion
-                    if (this.totalBytesDownloadedAcrossSegments < this.totalBytes && this.totalBytes > 0) {
-                        Log.e(TAG, "Total downloaded bytes mismatch before merge for " + this.displayFileName + ". Expected: " + this.totalBytes + ", Got: " + this.totalBytesDownloadedAcrossSegments + ". Marking as failed."); // Error 18-23: displayFileName
-                        updateDownloadStatus(this.downloadId, Download.STATUS_FAILED); // Update DB status
-                        deleteRecursive(partsDir); // Clean up inconsistent parts
+                    if (this.totalBytesDownloadedAcrossSegments < this.totalBytes && this.totalBytes > 0) { // Added braces
+                        Log.e(TAG, "Total downloaded bytes mismatch before merge for " + this.displayFileName + ". Expected: " + this.totalBytes + ", Got: " + this.totalBytesDownloadedAcrossSegments + ". Marking as failed.");
+                        updateDownloadStatus(this.downloadId, Download.STATUS_FAILED);
+                        deleteRecursive(partsDir);
                         return null;
                     }
 
-                    Log.i(TAG, "All segments downloaded successfully for " + this.displayFileName + ". Starting merge."); // Error 18-23: displayFileName
-                    if (notificationBuilder != null) {
-                        notificationBuilder.setContentText("Merging parts...").setProgress(0, 0, true); // Indeterminate progress for merge
-                        if (DownloadService.this.notificationManager != null) {
+                    Log.i(TAG, "All segments downloaded successfully for " + this.displayFileName + ". Starting merge.");
+                    if (notificationBuilder != null) { // Added braces
+                        notificationBuilder.setContentText("Merging parts...").setProgress(0, 0, true);
+                        if (DownloadService.this.notificationManager != null) { // Added braces
                              DownloadService.this.notificationManager.notify((int) (NOTIFICATION_ID_BASE + downloadId), notificationBuilder.build());
-                        } else { Log.w(TAG, "notificationManager is null, cannot update notification for merging state."); }
-                    } else { Log.w(TAG, "notificationBuilder is null, cannot update notification for merging state."); }
+                        } else { // Added braces
+                            Log.w(TAG, "notificationManager is null, cannot update notification for merging state.");
+                        }
+                    } else { // Added braces
+                        Log.w(TAG, "notificationBuilder is null, cannot update notification for merging state.");
+                    }
 
-                    boolean mergeSuccess = mergePartFiles(partsDir, new File(this.localPath), this.threadsCount); // Pass correct number of threads
-                    if (mergeSuccess) {
-                        updateDownloadStatus(this.downloadId, Download.STATUS_COMPLETED); // Update DB status
-                        deleteRecursive(partsDir); // Clean up parts directory after successful merge
+                    boolean mergeSuccess = mergePartFiles(partsDir, new File(this.localPath), this.threadsCount);
+                    if (mergeSuccess) { // Added braces
+                        updateDownloadStatus(this.downloadId, Download.STATUS_COMPLETED);
+                        deleteRecursive(partsDir);
                         return new File(this.localPath);
-                    } else {
-                        Log.e(TAG, "Failed to merge part files for " + this.displayFileName); // Error 18-23: displayFileName
-                        updateDownloadStatus(this.downloadId, Download.STATUS_FAILED); // Update DB status
-                        deleteRecursive(partsDir); // Clean up parts even if merge failed to avoid issues on retry
+                    } else { // Added braces
+                        Log.e(TAG, "Failed to merge part files for " + this.displayFileName);
+                        updateDownloadStatus(this.downloadId, Download.STATUS_FAILED);
+                        deleteRecursive(partsDir);
                         return null;
                     }
-                } else { // Segments did not all succeed (and not paused/cancelled before completion of loop)
-                    Log.e(TAG, "One or more segments failed or task was interrupted for " + this.displayFileName + "."); // Error 18-23: displayFileName
-                    if (!isPaused && !isCancelled()) { // If not paused or cancelled explicitly by user/task logic
-                        updateDownloadStatus(this.downloadId, Download.STATUS_FAILED); // Update DB status
-                        // Parts are kept for potential resume if paused, otherwise consider cleanup based on failure type.
-                        // For now, if not paused/cancelled, and segments fail, parts are kept.
+                } else {
+                    Log.e(TAG, "One or more segments failed or task was interrupted for " + this.displayFileName + ".");
+                    if (!isPaused && !isCancelled()) {
+                        updateDownloadStatus(this.downloadId, Download.STATUS_FAILED);
                     }
                     return null;
-                } // <<< MISSING BRACE WAS HERE for the `else` related to `!allSegmentsSuccess`
+                }
             } else { // Fallback to single-threaded download
                  if (this.multithreadEnabled && this.threadsCount > 1) {
-                    Log.w(TAG, "Falling back to single-threaded download for " + this.displayFileName + " (HEAD failed, no range support/size, or localPath null)."); // Error 18-23: displayFileName
+                    Log.w(TAG, "Falling back to single-threaded download for " + this.displayFileName + " (HEAD failed, no range support/size, or localPath null).");
                 } else {
-                    Log.d(TAG, "Proceeding with single-threaded download for " + this.displayFileName); // Error 18-23: displayFileName
+                    Log.d(TAG, "Proceeding with single-threaded download for " + this.displayFileName);
                 }
                 return singleThreadDownloadLogic();
             }
-        }
+        } // End of doInBackground
 
-        private void incrementOverallProgress(long delta) { // Renamed from synchronized void for clarity, lock explicit
+        private void incrementOverallProgress(long delta) {
             synchronized (progressLock) {
-            synchronized (progressLock) { // Ensure thread-safe update to shared progress variables
-                if (delta > 0) { // Only add if actual bytes were downloaded
+            synchronized (progressLock) {
+                if (delta > 0) {
                     this.totalBytesDownloadedAcrossSegments += delta;
                 }
-                // Update DB progress regardless of delta, as totalBytes might have changed or initial call
                 updateDownloadProgress(downloadId, this.totalBytesDownloadedAcrossSegments, this.totalBytes);
 
                 if (this.totalBytes > 0) {
                     int progress = (int) ((this.totalBytesDownloadedAcrossSegments * 100) / this.totalBytes);
-                    publishProgress(progress); // Update notification via onProgressUpdate
+                    publishProgress(progress);
                 } else {
-                    publishProgress(-1); // Indeterminate progress
+                    publishProgress(-1);
                 }
             }
 
             long currentTime = System.currentTimeMillis();
-            // Throttle broadcast updates for performance
             if (delta >= 0 && (currentTime - lastUpdateTime > 500 || (this.totalBytes > 0 && this.totalBytesDownloadedAcrossSegments == this.totalBytes) ) ) {
-                synchronized(progressLock) { // Also protect speed calculation with shared variables
-                    long elapsedTime = currentTime - startTime; // startTime is from onPreExecute
+                synchronized(progressLock) {
+                    long elapsedTime = currentTime - startTime;
                     if (elapsedTime > 0) {
-                         // Calculate speed based on total downloaded by this task across all its segments
-                         this.speed = (double) this.totalBytesDownloadedAcrossSegments / (elapsedTime / 1000.0); // bytes/sec
+                         this.speed = (double) this.totalBytesDownloadedAcrossSegments / (elapsedTime / 1000.0);
                     } else {
-                        this.speed = 0; // Avoid division by zero if no time has passed
+                        this.speed = 0;
                     }
                 }
                 Intent intent = new Intent(ACTION_DOWNLOAD_PROGRESS);
