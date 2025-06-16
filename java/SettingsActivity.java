@@ -4,13 +4,14 @@ import android.content.Intent;
 // SharedPreferences import removed as it's now encapsulated in AppSettings
 import android.os.Bundle;
 import android.text.InputType;
-import android.widget.Button;
+// Button import will be replaced by MaterialButton if not used by other elements
 import android.widget.EditText;
 import android.widget.TextView;
 // import android.widget.Toast; // Not strictly needed if no toasts are shown
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import com.google.android.material.button.MaterialButton; // Added import
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.winlator.Download.utils.AppSettings; // Added import
@@ -20,8 +21,8 @@ public class SettingsActivity extends AppCompatActivity {
     // SharedPreferences keys are now in AppSettings.java
 
     // private Button btnConfigureUploadApi; // Removed
-    private Button btnLinkCryptorTool;
-    private Button btn_select_download_folder;
+    private MaterialButton btnLinkCryptorTool; // Changed type
+    private MaterialButton btn_select_download_folder; // Changed type
     private TextView tv_selected_download_folder;
     private SwitchMaterial switch_direct_community_downloads;
 
