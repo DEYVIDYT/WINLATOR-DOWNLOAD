@@ -33,6 +33,11 @@ public class AppSettings {
     private static final String GOFILE_WT_MARKER_SUFFIX = "\""; // Escaped quote
     private static final long GOFILE_WT_CACHE_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hour
 
+    // Constants for Multi-threaded Download Settings
+    public static final String KEY_ENABLE_MULTITHREAD_DOWNLOAD = "enable_multithread_download";
+    public static final String KEY_DOWNLOAD_THREADS_COUNT = "download_threads_count";
+    public static final int DEFAULT_DOWNLOAD_THREADS_COUNT = 4; // Sensible default
+
     // Getter for Download Path
     public static String getDownloadPath(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -261,5 +266,34 @@ public class AppSettings {
             }
         }
         return wtToken;
+    }
+
+    // Getter for Enable Multi-threaded Download State
+    public static boolean isMultithreadDownloadEnabled(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        return prefs.getBoolean(KEY_ENABLE_MULTITHREAD_DOWNLOAD, false); // Default to false (disabled)
+    }
+
+    // Setter for Enable Multi-threaded Download State
+    public static void setMultithreadDownloadEnabled(Context context, boolean isEnabled) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putBoolean(KEY_ENABLE_MULTITHREAD_DOWNLOAD, isEnabled);
+        editor.apply();
+    }
+
+    // Getter for Download Threads Count
+    public static int getDownloadThreadsCount(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        return prefs.getInt(KEY_DOWNLOAD_THREADS_COUNT, DEFAULT_DOWNLOAD_THREADS_COUNT);
+    }
+
+    // Setter for Download Threads Count
+    public static void setDownloadThreadsCount(Context context, int count) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        // Basic validation: ensure count is at least 1. The UI slider should enforce upper bound.
+        editor.putInt(KEY_DOWNLOAD_THREADS_COUNT, Math.max(1, count));
+        editor.apply();
     }
 }

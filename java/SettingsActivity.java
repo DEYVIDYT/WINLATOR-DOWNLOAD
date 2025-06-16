@@ -8,11 +8,13 @@ import android.text.InputType;
 import android.widget.EditText;
 import android.widget.TextView;
 // import android.widget.Toast; // Not strictly needed if no toasts are shown
+import android.view.View; // Added for View.VISIBLE/GONE
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.button.MaterialButton; // Added import
 import com.google.android.material.color.DynamicColors;
+import com.google.android.material.slider.Slider; // Added import for Slider
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.winlator.Download.utils.AppSettings; // Added import
 
@@ -25,6 +27,12 @@ public class SettingsActivity extends AppCompatActivity {
     private MaterialButton btn_select_download_folder; // Changed type
     private TextView tv_selected_download_folder;
     private SwitchMaterial switch_direct_community_downloads;
+
+    // New UI elements for multi-threaded download
+    private SwitchMaterial switchEnableMultithreadDownload;
+    private TextView tvLabelDownloadThreads;
+    private Slider sliderDownloadThreads;
+    private TextView tvDownloadThreadsValue;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,6 +56,12 @@ public class SettingsActivity extends AppCompatActivity {
         btn_select_download_folder = findViewById(R.id.btn_select_download_folder);
         tv_selected_download_folder = findViewById(R.id.tv_selected_download_folder);
         switch_direct_community_downloads = findViewById(R.id.switch_direct_community_downloads);
+
+        // Initialize new UI elements
+        switchEnableMultithreadDownload = findViewById(R.id.switch_enable_multithread_download);
+        tvLabelDownloadThreads = findViewById(R.id.tv_label_download_threads);
+        sliderDownloadThreads = findViewById(R.id.slider_download_threads);
+        tvDownloadThreadsValue = findViewById(R.id.tv_download_threads_value);
     }
 
     private void loadSettings() {
@@ -56,6 +70,18 @@ public class SettingsActivity extends AppCompatActivity {
         tv_selected_download_folder.setText(downloadPath);
         boolean disableDirectDownloads = AppSettings.getDisableDirectDownloads(this);
         switch_direct_community_downloads.setChecked(disableDirectDownloads);
+
+        // Load multi-threaded download settings
+        // These AppSettings methods will be created in the next subtask.
+        // Using defaults for now to ensure compilability if AppSettings is not yet updated.
+        boolean isMultithreadEnabled = AppSettings.isMultithreadDownloadEnabled(this);
+        switchEnableMultithreadDownload.setChecked(isMultithreadEnabled);
+
+        int downloadThreads = AppSettings.getDownloadThreadsCount(this);
+        sliderDownloadThreads.setValue(downloadThreads > 0 ? downloadThreads : 4.0f); // Ensure value is at least 1 or a default
+        tvDownloadThreadsValue.setText(String.valueOf((int)sliderDownloadThreads.getValue()));
+
+        updateThreadControlsVisibility(isMultithreadEnabled);
     }
 
     private void setupClickListeners() {
@@ -104,7 +130,42 @@ public class SettingsActivity extends AppCompatActivity {
 
         if (switch_direct_community_downloads != null) {
             switch_direct_community_downloads.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                AppSettings.setDisableDirectDownloads(this, isChecked); // Use AppSettings to set value
+                AppSettings.setDisableDirectDownloads(this, isChecked);
+            });
+        }
+
+        // Listeners for multi-threaded download settings
+        if (switchEnableMultithreadDownload != null) {
+            switchEnableMultithreadDownload.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                AppSettings.setMultithreadDownloadEnabled(this, isChecked); // Placeholder
+                updateThreadControlsVisibility(isChecked);
+                // If enabling, ensure the current slider value is saved once.
+                if (isChecked) {
+                    AppSettings.setDownloadThreadsCount(this, (int) sliderDownloadThreads.getValue()); // Placeholder
+                }
+            });
+        }
+
+        if (sliderDownloadThreads != null) {
+            sliderDownloadThreads.addOnChangeListener((slider, value, fromUser) -> {
+                if (fromUser) { // Only update text if change is from user to avoid issues during load
+                    tvDownloadThreadsValue.setText(String.valueOf((int) value));
+                }
+            });
+
+            sliderDownloadThreads.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
+                @Override
+                public void onStartTrackingTouch(Slider slider) {
+                    // Can be used if needed, e.g., for haptic feedback
+                }
+
+                @Override
+                public void onStopTrackingTouch(Slider slider) {
+                    int intValue = (int) slider.getValue();
+                    tvDownloadThreadsValue.setText(String.valueOf(intValue)); // Ensure text is set on stop
+                    AppSettings.setDownloadThreadsCount(this, intValue); // Placeholder
+                    Log.d("SettingsActivity", "Saved thread count: " + intValue);
+                }
             });
         }
     }
@@ -113,5 +174,21 @@ public class SettingsActivity extends AppCompatActivity {
     public boolean onSupportNavigateUp() {
         onBackPressed();
         return true;
+    }
+
+    private void updateThreadControlsVisibility(boolean isEnabled) {
+        if (isEnabled) {
+            tvLabelDownloadThreads.setVisibility(View.VISIBLE);
+            sliderDownloadThreads.setVisibility(View.VISIBLE);
+            tvDownloadThreadsValue.setVisibility(View.VISIBLE);
+            // Ensure the text view is updated with the current slider value when made visible
+            if (sliderDownloadThreads != null && tvDownloadThreadsValue != null) { // Check for null before accessing
+                tvDownloadThreadsValue.setText(String.valueOf((int) sliderDownloadThreads.getValue()));
+            }
+        } else {
+            tvLabelDownloadThreads.setVisibility(View.GONE);
+            sliderDownloadThreads.setVisibility(View.GONE);
+            tvDownloadThreadsValue.setVisibility(View.GONE);
+        }
     }
 }

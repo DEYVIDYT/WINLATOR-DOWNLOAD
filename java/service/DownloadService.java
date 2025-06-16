@@ -8,7 +8,6 @@ import android.app.Service;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
-// SharedPreferences import removed as it's now encapsulated in AppSettings
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.net.Uri;
@@ -33,7 +32,6 @@ import com.winlator.Download.R;
 import com.winlator.Download.db.DownloadContract;
 import com.winlator.Download.db.SQLiteHelper;
 import com.winlator.Download.model.Download;
-import com.winlator.Download.utils.AppSettings; // Added import
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -51,6 +49,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future; // Added
+import java.util.List; // Added
+import java.util.ArrayList; // Added
+import com.winlator.Download.utils.AppSettings; // Ensure this is imported
 
 public class DownloadService extends Service {
 
@@ -80,15 +82,6 @@ public class DownloadService extends Service {
     // Google Drive specific actions and extras
     public static final String ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD = "com.winlator.Download.action.RESOLVE_GOOGLE_DRIVE_DOWNLOAD";
     public static final String EXTRA_GOOGLE_DRIVE_URL = "com.winlator.Download.extra.GOOGLE_DRIVE_URL";
-
-    // Pixeldrain specific actions and extras
-    public static final String ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD = "com.winlator.Download.action.RESOLVE_PIXELDRAIN_DOWNLOAD";
-    public static final String EXTRA_PIXELDRAIN_URL = "com.winlator.Download.extra.PIXELDRAIN_URL";
-
-    // New extra for Gofile content ID (root folder name)
-    public static final String EXTRA_GOFILE_CONTENT_ID = "com.winlator.Download.extra.GOFILE_CONTENT_ID";
-
-    // SharedPreferences keys are now in AppSettings.java
 
     // Broadcast actions
     public static final String ACTION_DOWNLOAD_PROGRESS = "com.winlator.Download.action.DOWNLOAD_PROGRESS";
@@ -182,10 +175,8 @@ public class DownloadService extends Service {
                  action = ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD;
             } else if (intent.hasExtra(EXTRA_MEDIAFIRE_URL)) {
                  action = ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD;
-            } else if (intent.hasExtra(EXTRA_GOOGLE_DRIVE_URL)) {
+            } else if (intent.hasExtra(EXTRA_GOOGLE_DRIVE_URL)) { // Added check for Google Drive URL
                  action = ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD;
-            } else if (intent.hasExtra(EXTRA_PIXELDRAIN_URL)) { // Added check for Pixeldrain URL
-                 action = ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD;
             } else if (intent.hasExtra(EXTRA_URL)) {
                  action = ACTION_START_DOWNLOAD;
             } else {
@@ -239,18 +230,6 @@ public class DownloadService extends Service {
                     Log.e(TAG, "Google Drive URL is missing for RESOLVE action.");
                 }
                 break;
-            case ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD:
-                String pixeldrainUrl = intent.getStringExtra(EXTRA_PIXELDRAIN_URL);
-                Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD for URL: " + pixeldrainUrl);
-                if (pixeldrainUrl != null && !pixeldrainUrl.isEmpty()) {
-                    if (executor == null || executor.isShutdown()) {
-                        executor = Executors.newSingleThreadExecutor();
-                    }
-                    executor.execute(() -> handleResolvePixeldrainUrl(pixeldrainUrl));
-                } else {
-                    Log.e(TAG, "Pixeldrain URL is missing for RESOLVE action.");
-                }
-                break;
             // ... (other existing cases: PAUSE, RESUME, CANCEL, RETRY, default) ...
             case ACTION_PAUSE_DOWNLOAD:
                 handlePauseDownload(intent);
@@ -285,7 +264,7 @@ public class DownloadService extends Service {
 
     private void handleResolveGofileUrl(String gofileUrl, String password) {
         Log.i(TAG, "handleResolveGofileUrl: Starting resolution for " + gofileUrl);
-        GofileLinkResolver resolver = new GofileLinkResolver(this); // Use constructor with Context
+        GofileLinkResolver resolver = new GofileLinkResolver();
         GofileResolvedResult resolvedResult = resolver.resolveGofileUrl(gofileUrl, password);
 
         if (resolvedResult != null && resolvedResult.hasItems()) {
@@ -294,13 +273,9 @@ public class DownloadService extends Service {
                 Intent downloadIntent = new Intent(this, DownloadService.class);
                 downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
                 downloadIntent.putExtra(EXTRA_URL, item.directUrl);
-                // item.fileName is now the relative path (e.g., "folder/file.txt" or "file.txt")
                 downloadIntent.putExtra(EXTRA_FILE_NAME, item.fileName);
                 downloadIntent.putExtra(EXTRA_AUTH_TOKEN, resolvedResult.getAuthToken());
-                // item.gofileContentId is the rootFolderName/original contentId
-                downloadIntent.putExtra(EXTRA_GOFILE_CONTENT_ID, item.gofileContentId);
-
-                Log.d(TAG, "Dispatching new download task for resolved Gofile item: " + item.fileName + " in content: " + item.gofileContentId);
+                Log.d(TAG, "Dispatching new download task for resolved Gofile item: " + item.fileName);
                 mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
             }
         } else {
@@ -313,7 +288,6 @@ public class DownloadService extends Service {
                 .setContentText("Não foi possível resolver arquivos do link Gofile.")
                 .setAutoCancel(true);
             if (notificationManager != null) {
-                // GofileLinkResolver resolver = new GofileLinkResolver(this); // This line was an erroneous comment in original instructions
                 notificationManager.notify((int) (System.currentTimeMillis() % 10000), builder.build());
             }
         }
@@ -397,41 +371,6 @@ public class DownloadService extends Service {
                 .setAutoCancel(true);
             if (notificationManager != null) {
                  notificationManager.notify((int) (System.currentTimeMillis() % 10000) + 2, builder.build()); // Use different ID
-            }
-        }
-    }
-
-    private void handleResolvePixeldrainUrl(String pageUrl) {
-        Log.i(TAG, "handleResolvePixeldrainUrl: Starting resolution for " + pageUrl);
-        PixeldrainLinkResolver resolver = new PixeldrainLinkResolver();
-        DownloadItem resolvedItem = resolver.resolvePixeldrainUrl(pageUrl);
-
-        if (resolvedItem != null && resolvedItem.directUrl != null && !resolvedItem.directUrl.isEmpty()) {
-            Log.i(TAG, "Pixeldrain resolution successful. Filename: " + resolvedItem.fileName + ", URL: " + resolvedItem.directUrl + ", Size: " + resolvedItem.size);
-
-            Intent downloadIntent = new Intent(this, DownloadService.class);
-            downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
-            downloadIntent.putExtra(EXTRA_URL, resolvedItem.directUrl);
-            downloadIntent.putExtra(EXTRA_FILE_NAME, resolvedItem.fileName);
-
-            Log.d(TAG, "Dispatching new download task for resolved Pixeldrain item: " + resolvedItem.fileName);
-            mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
-
-        } else {
-            Log.e(TAG, "Pixeldrain resolution failed or no items found for " + pageUrl);
-            final String userMessage = "Falha ao resolver link Pixeldrain: "
-                                     + (pageUrl != null && pageUrl.lastIndexOf('/') != -1 && pageUrl.lastIndexOf('/') < pageUrl.length() -1
-                                        ? pageUrl.substring(pageUrl.lastIndexOf('/') + 1)
-                                        : "Desconhecido");
-            mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
-
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_cancel)
-                .setContentTitle("Erro no Link Pixeldrain")
-                .setContentText("Não foi possível resolver o link Pixeldrain.")
-                .setAutoCancel(true);
-            if (notificationManager != null) {
-                 notificationManager.notify((int) (System.currentTimeMillis() % 10000) + 3, builder.build());
             }
         }
     }
@@ -533,105 +472,82 @@ public class DownloadService extends Service {
 
         // Capture authToken for use in the lambda
         final String effectiveAuthToken = authToken;
-        // Capture Gofile Content ID for use in path construction if present
-        final String gofileContentId = intent.getStringExtra(EXTRA_GOFILE_CONTENT_ID);
 
         executor.execute(() -> {
-            // fileName from intent can be a relative path (Gofile) or simple name (others)
-            Log.d(TAG, "handleStartDownload (Executor): Processing URL: '" + urlString + "', InputFileName: '" + fileName + "', GofileContentID: '" + gofileContentId + "'");
-
-            File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this));
-            File targetFile;
-
-            if (gofileContentId != null && !gofileContentId.isEmpty()) {
-                File gofileRootShareDir = new File(baseAppDownloadDir, gofileContentId);
-                targetFile = new File(gofileRootShareDir, fileName); // fileName is relative path here
-            } else {
-                targetFile = new File(baseAppDownloadDir, fileName); // fileName is simple name here
-            }
-
-            File parentDirFile = targetFile.getParentFile();
-            if (parentDirFile != null && !parentDirFile.exists()) {
-                if (!parentDirFile.mkdirs()) {
-                    Log.e(TAG, "handleStartDownload (Executor): Failed to create parent directory: " + parentDirFile.getAbsolutePath() + ". Aborting.");
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                        Toast.makeText(DownloadService.this, "Erro ao criar diretório para download.", Toast.LENGTH_SHORT).show();
-                    });
-                    checkStopForeground();
-                    return;
-                }
-            }
-
-            final String finalLocalPath = targetFile.getAbsolutePath();
-            final String actualDisplayFileName = targetFile.getName(); // This is the true file name, used for display and DB
-
-            // Check if a download task for this specific localPath is already active
+            Log.d(TAG, "handleStartDownload (Executor): Background processing started for URL: '" + urlString + "', FileName: '" + fileName + "' AuthToken: " + (effectiveAuthToken != null ? "present" : "null"));
+            // Check if a download task for this URL is already in activeDownloads
             for (DownloadTask existingTask : activeDownloads.values()) {
-                if (existingTask.localPath != null && existingTask.localPath.equals(finalLocalPath)) {
-                    Log.i(TAG, "Download task for " + finalLocalPath + " already active.");
+                if (existingTask.urlString.equals(urlString)) {
+                    Log.i(TAG, "Download task for URL already active: " + urlString);
                     new Handler(Looper.getMainLooper()).post(() -> {
-                        if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                        Toast.makeText(DownloadService.this, actualDisplayFileName + " já está sendo baixado.", Toast.LENGTH_SHORT).show();
+                        if (notificationManager != null) { // Check notificationManager
+                            notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+                        }
+                        Toast.makeText(DownloadService.this, "Este arquivo já está sendo baixado", Toast.LENGTH_SHORT).show();
                     });
-                    checkStopForeground();
+                    // No need to call checkStopForeground here as the service was just started with a new notification.
+                    // If this task wasn't truly new, the original foreground notification for that task should still be active.
                     return;
                 }
             }
 
-            // Use getDownloadIdByLocalPath for a more precise check if this exact file is already in DB
-            long downloadId = getDownloadIdByLocalPath(finalLocalPath);
-            Log.d(TAG, "handleStartDownload (Executor): getDownloadIdByLocalPath for '" + finalLocalPath + "' returned ID: " + downloadId);
+            long downloadId = getDownloadIdByUrl(urlString);
+            Log.d(TAG, "handleStartDownload (Executor): getDownloadIdByUrl for '" + urlString + "' returned ID: " + downloadId);
 
             if (downloadId != -1) {
                 Download existingDownload = getDownloadById(downloadId);
+                Log.d(TAG, "handleStartDownload (Executor): Found existing DB entry for ID " + downloadId + ". Status: " + (existingDownload != null ? existingDownload.getStatus() : "null object") + ", Path: " + (existingDownload != null ? existingDownload.getLocalPath() : "null object"));
                 new Handler(Looper.getMainLooper()).post(() -> {
-                    if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                    if (existingDownload != null) {
-                        // Ensure URL also matches. If not, it's a new download replacing an old file, or an error.
-                        if (!existingDownload.getUrl().equals(urlString)) {
-                             Log.w(TAG, "Existing download found for path " + finalLocalPath + " but with different URL. Old: " + existingDownload.getUrl() + ", New: " + urlString + ". Overwriting DB entry and restarting.");
-                             deleteDownload(existingDownload.getId()); // This will also attempt to delete file, which is fine
-                             // Fall through to new download logic by setting downloadId to -1 (effectively) by not returning
-                        } else {
-                            // URL matches, it's the same download item
-                            if (existingDownload.getStatus() == Download.STATUS_COMPLETED) {
-                                Toast.makeText(DownloadService.this, actualDisplayFileName + " já foi baixado.", Toast.LENGTH_SHORT).show();
-                            } else if (existingDownload.getStatus() == Download.STATUS_PAUSED || existingDownload.getStatus() == Download.STATUS_FAILED) {
-                                Log.i(TAG, "Resuming/Retrying existing download for " + actualDisplayFileName);
-                                startDownload(existingDownload.getId(), existingDownload.getUrl(), actualDisplayFileName, effectiveAuthToken, finalLocalPath);
-                            } else if (existingDownload.getStatus() == Download.STATUS_DOWNLOADING) {
-                                Toast.makeText(DownloadService.this, actualDisplayFileName + " já está sendo baixado.", Toast.LENGTH_SHORT).show();
-                            }
-                            checkStopForeground();
-                            return; // Handled existing download
-                        }
+                    if (notificationManager != null) {
+                         notificationManager.cancel(PREPARING_NOTIFICATION_ID);
                     }
-                    // If existingDownload was null or URL mismatch led to fall-through:
-                    final long newOrUpdatedDownloadId = insertDownload(urlString, actualDisplayFileName, finalLocalPath);
-                    if (newOrUpdatedDownloadId != -1) {
-                        startDownload(newOrUpdatedDownloadId, urlString, actualDisplayFileName, effectiveAuthToken, finalLocalPath);
+                    if (existingDownload != null) {
+                        if (existingDownload.getStatus() == Download.STATUS_COMPLETED) {
+                            Toast.makeText(DownloadService.this, "Este arquivo já foi baixado", Toast.LENGTH_SHORT).show();
+                        } else if (existingDownload.getStatus() == Download.STATUS_PAUSED || existingDownload.getStatus() == Download.STATUS_FAILED) {
+                            Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for existing paused/failed download. ID: " + existingDownload.getId() + ", URL: '" + existingDownload.getUrl() + "', FileName: '" + existingDownload.getFileName() + "'");
+                            startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName(), effectiveAuthToken);
+                        } else if (existingDownload.getStatus() == Download.STATUS_DOWNLOADING) {
+                            Log.w(TAG, "DB indicates downloading, but no active task found for " + existingDownload.getFileName() + ". Attempting to restart.");
+                            Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for existing downloading (but no task) download. ID: " + existingDownload.getId() + ", URL: '" + existingDownload.getUrl() + "', FileName: '" + existingDownload.getFileName() + "'");
+                            startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName(), effectiveAuthToken);
+                        }
                     } else {
-                        Log.e(TAG, "Failed to insert/update download record for: " + urlString + " at path " + finalLocalPath);
-                        Toast.makeText(DownloadService.this, "Erro ao iniciar download para " + actualDisplayFileName, Toast.LENGTH_SHORT).show();
+                        // DB had an ID, but we couldn't fetch the Download object. This is an inconsistent state.
+                        Log.w(TAG, "Could not fetch existing download with ID: " + downloadId + ". Treating as new.");
+                        final long newDownloadIdAfterNull = insertDownload(urlString, fileName);
+                        Log.d(TAG, "handleStartDownload (Executor): Existing download object was null for ID " + downloadId + ". Attempted insert, new ID: " + newDownloadIdAfterNull);
+                        if (newDownloadIdAfterNull != -1) {
+                            Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for new download (after null existing). ID: " + newDownloadIdAfterNull + ", URL: '" + urlString + "', FileName: '" + fileName + "'");
+                            startDownload(newDownloadIdAfterNull, urlString, fileName, effectiveAuthToken);
+                        } else {
+                            Log.e(TAG, "Failed to insert new download record for: " + urlString);
+                            Toast.makeText(DownloadService.this, "Erro ao iniciar download.", Toast.LENGTH_SHORT).show();
+                        }
                     }
                     checkStopForeground();
                 });
                 return;
             }
 
-            // No existing download found for this localPath, this is a new download.
-            final long newDownloadId = insertDownload(urlString, actualDisplayFileName, finalLocalPath);
-            Log.d(TAG, "handleStartDownload (Executor): No existing DB entry for this local path. Inserted new record with ID: " + newDownloadId);
+            // If no existing download ID was found by URL, this is a new download.
+            final long newDownloadId = insertDownload(urlString, fileName);
+            Log.d(TAG, "handleStartDownload (Executor): No existing DB entry. Inserted new record with ID: " + newDownloadId + " for URL: '" + urlString + "'");
 
             new Handler(Looper.getMainLooper()).post(() -> {
-                if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                if (newDownloadId != -1) {
-                    startDownload(newDownloadId, urlString, actualDisplayFileName, effectiveAuthToken, finalLocalPath);
-                } else {
-                    Log.e(TAG, "Failed to insert new download record for: " + urlString + " at path " + finalLocalPath);
-                    Toast.makeText(DownloadService.this, "Erro ao iniciar download para " + actualDisplayFileName, Toast.LENGTH_SHORT).show();
+                if (notificationManager != null) {
+                    notificationManager.cancel(PREPARING_NOTIFICATION_ID);
                 }
+                if (newDownloadId != -1) {
+                    Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for brand new download. ID: " + newDownloadId + ", URL: '" + urlString + "', FileName: '" + fileName + "'");
+                    startDownload(newDownloadId, urlString, fileName, effectiveAuthToken);
+                } else {
+                    Log.e(TAG, "Failed to insert new download record for: " + urlString);
+                    Toast.makeText(DownloadService.this, "Erro ao iniciar download.", Toast.LENGTH_SHORT).show();
+                }
+                // checkStopForeground is important here: if startDownload fails to post its own fg notification
+                // or if the download is immediately found to be complete/invalid before a real task starts,
+                // this ensures the "preparing" notification is cleared and service stops if appropriate.
                 checkStopForeground();
             });
         });
@@ -674,15 +590,7 @@ public class DownloadService extends Service {
         }
         if (download != null && (download.getStatus() == Download.STATUS_PAUSED || download.getStatus() == Download.STATUS_FAILED)) {
             // For now, resume will not have the Gofile token unless we store it in DB.
-            // Ensure localPath is available for resume.
-            String localPath = download.getLocalPath();
-            if (localPath == null || localPath.isEmpty()) {
-                // Fallback if localPath is somehow missing (should not happen for resumable downloads)
-                File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this));
-                localPath = new File(baseAppDownloadDir, download.getFileName()).getAbsolutePath();
-                Log.w(TAG, "Resuming download for ID " + downloadId + " but localPath was missing. Reconstructed to: " + localPath);
-            }
-            startDownload(downloadId, download.getUrl(), download.getFileName(), null, localPath);
+            startDownload(downloadId, download.getUrl(), download.getFileName(), null);
         }
     }
 
@@ -756,40 +664,35 @@ public class DownloadService extends Service {
             
             // Iniciar o download novamente
             // Retry will also not use a token unless persisted.
-            String localPath = download.getLocalPath();
-            if (localPath == null || localPath.isEmpty()) {
-                 File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this));
-                 localPath = new File(baseAppDownloadDir, download.getFileName()).getAbsolutePath();
-                 Log.w(TAG, "Retrying download for ID " + downloadId + " but localPath was missing. Reconstructed to: " + localPath);
-            }
-            startDownload(downloadId, download.getUrl(), download.getFileName(), null, localPath);
+            startDownload(downloadId, download.getUrl(), download.getFileName(), null);
         }
     }
 
-    // Modified startDownload signature to include authToken and targetLocalPath
-    private void startDownload(long downloadId, String urlString, String displayFileName, String authToken, String targetLocalPath) {
-        Log.i(TAG, "startDownload: Entry. ID: " + downloadId + ", URL: '" + urlString + "', DisplayFileName: '" + displayFileName + "', LocalPath: '" + targetLocalPath + "', AuthToken: " + (authToken != null ? "present" : "null"));
-
-        if (targetLocalPath == null || targetLocalPath.isEmpty()) {
-            Log.e(TAG, "startDownload called with null or empty targetLocalPath for ID: " + downloadId + ". Aborting.");
-            // Update status to FAILED as we can't proceed.
-            updateDownloadStatus(downloadId, Download.STATUS_FAILED);
-            updateNotificationError(downloadId, displayFileName); // Show error notification
-            return;
-        }
-
-        // Criar ou atualizar a notificação using displayFileName
-        NotificationCompat.Builder builder = createOrUpdateNotificationBuilder(downloadId, displayFileName);
+    // Modified startDownload signature to include authToken
+    private void startDownload(long downloadId, String urlString, String fileName, String authToken) {
+        Log.i(TAG, "startDownload: Entry. ID: " + downloadId + ", URL: '" + urlString + "', FileName: '" + fileName + "', AuthToken: " + (authToken != null ? "present" : "null"));
+        // Criar ou atualizar a notificação
+        NotificationCompat.Builder builder = createOrUpdateNotificationBuilder(downloadId, fileName);
         activeNotifications.put(downloadId, builder);
         
         // Iniciar o serviço em primeiro plano
         startForeground((int) (NOTIFICATION_ID_BASE + downloadId), builder.build());
         
-        // Atualizar o status no banco de dados (localPath might be updated here again if it changed, but should be set by now)
+        // Atualizar o status no banco de dados
+        // For Gofile, fileName might be a relative path. targetLocalPath is the full path.
+        // actualDisplayFileName (derived from targetLocalPath.getName()) is best for DB.
+        // This part is now handled in handleStartDownload before calling this startDownload method.
+        // The call to updateDownloadStatus here will use the targetLocalPath.
         updateDownloadStatus(downloadId, Download.STATUS_DOWNLOADING, targetLocalPath);
+
+        // Retrieve multi-thread settings
+        boolean multithreadEnabled = AppSettings.isMultithreadDownloadEnabled(this);
+        int threadsCount = AppSettings.getDownloadThreadsCount(this);
+        Log.d(TAG, "startDownload for ID " + downloadId + " - Multithread Enabled: " + multithreadEnabled + ", Threads: " + threadsCount);
         
-        // Iniciar a tarefa de download, passing the authToken and targetLocalPath
-        DownloadTask task = new DownloadTask(downloadId, urlString, displayFileName, builder, authToken, targetLocalPath);
+        // Iniciar a tarefa de download, passing the authToken, targetLocalPath, and multi-thread settings
+        // displayFileName is passed to DownloadTask, which is correct.
+        DownloadTask task = new DownloadTask(downloadId, urlString, displayFileName, builder, authToken, targetLocalPath, multithreadEnabled, threadsCount);
         activeDownloads.put(downloadId, task);
         Log.i(TAG, "startDownload: About to execute DownloadTask for ID: " + downloadId);
         task.execute();
@@ -801,16 +704,16 @@ public class DownloadService extends Service {
     }
 
     // Overload for existing calls that don't have authToken (e.g., resume of non-Gofile)
-    // This specific overload is now problematic as it doesn't provide localPath.
-    // It should be refactored or removed if all callers can provide localPath.
-    // For now, let's assume callers will be updated or this is for very simple, non-resumable cases.
-    private void startDownload(long downloadId, String urlString, String displayFileName, String authToken) {
-        Log.w(TAG, "startDownload (legacy overload) called for ID: " + downloadId + ". Constructing default local path.");
-        File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this)); // Get base dir
+    // This overload needs to be updated to fit the new main signature, or removed if all calls are updated.
+    // For now, it will call the new main signature with default pathing.
+    private void startDownload(long downloadId, String urlString, String displayFileName) {
+        Log.w(TAG, "startDownload (legacy overload without authToken/localPath) called for ID: " + downloadId);
+        File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this));
         String defaultLocalPath = new File(baseAppDownloadDir, displayFileName).getAbsolutePath();
-        startDownload(downloadId, urlString, displayFileName, authToken, defaultLocalPath);
+        boolean multithreadEnabled = AppSettings.isMultithreadDownloadEnabled(this);
+        int threadsCount = AppSettings.getDownloadThreadsCount(this);
+        startDownload(downloadId, urlString, displayFileName, null, defaultLocalPath, multithreadEnabled, threadsCount);
     }
-
 
     private NotificationCompat.Builder createOrUpdateNotificationBuilder(long downloadId, String displayFileName) {
         // Verificar se já existe uma notificação para este download
@@ -851,7 +754,7 @@ public class DownloadService extends Service {
             // Criar a notificação
             builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_download)
-                .setContentTitle(displayFileName)
+                .setContentTitle(fileName)
                 .setContentText("Iniciando download...")
                 .setProgress(100, 0, true) // Indeterminado inicialmente
                 .setOngoing(true) // Não pode ser dispensada pelo usuário
@@ -1057,10 +960,12 @@ public class DownloadService extends Service {
     private class DownloadTask extends AsyncTask<Void, Integer, File> {
         private final long downloadId;
         private final String urlString;
-        private final String displayFileName; // Renamed from fileName, used for notifications
+        private final String displayFileName; // Renamed
         private final NotificationCompat.Builder notificationBuilder;
-        private final String localPath; // Full local path for the download
+        private final String localPath; // New
         private final String authToken;
+        private final boolean multithreadEnabled; // New
+        private final int threadsCount; // New
 
         private boolean isPaused = false;
         private boolean isCancelled = false;
@@ -1070,22 +975,45 @@ public class DownloadService extends Service {
         private long lastUpdateTime = 0;
         private double speed = 0;
 
-        // Modified constructor to include localPath
-        DownloadTask(long downloadId, String urlString, String displayFileName, NotificationCompat.Builder builder, String authToken, String localPath) {
+        // For multi-threaded download
+        private ExecutorService segmentExecutor;
+        private final List<Future<?>> segmentFutures = new ArrayList<>();
+        private long totalBytesDownloadedAcrossSegments = 0;
+        private final Object progressLock = new Object();
+
+        // Main Constructor
+        DownloadTask(long downloadId, String urlString, String displayFileName,
+                     NotificationCompat.Builder builder, String authToken, String localPath,
+                     boolean multithreadEnabled, int threadsCount) {
             this.downloadId = downloadId;
             this.urlString = urlString;
-            this.displayFileName = displayFileName; // Used for notification title
+            this.displayFileName = displayFileName;
             this.notificationBuilder = builder;
             this.authToken = authToken;
-            this.localPath = localPath; // Full path where the file will be saved
+            this.localPath = localPath;
+            this.multithreadEnabled = multithreadEnabled;
+            this.threadsCount = Math.max(1, threadsCount); // Ensure at least 1 thread
+             if(localPath == null && multithreadEnabled && threadsCount > 1){
+                Log.e(TAG, "DownloadTask ID " + downloadId + ": localPath is null but multithreading is enabled. This is problematic.");
+                // Potentially fall back to single-threaded or throw an error
+            }
+            Log.d(TAG, "DownloadTask " + downloadId + " constructed. MultiThread: " + this.multithreadEnabled + ", Threads: " + this.threadsCount + ", Path: " + this.localPath);
         }
 
-        // This overload might need adjustment or removal if all calls provide localPath
-        DownloadTask(long downloadId, String urlString, String displayFileName, NotificationCompat.Builder builder, String authToken) {
-            this(downloadId, urlString, displayFileName, builder, authToken, null); // Default localPath to null, requires handling
-             Log.w(TAG, "DownloadTask created without explicit localPath for ID: " + downloadId + ". Path will be derived if null.");
+        // Legacy Overload (localPath provided, multi-thread settings from AppSettings)
+        DownloadTask(long downloadId, String urlString, String displayFileName,
+                     NotificationCompat.Builder builder, String authToken, String localPath) {
+            this(downloadId, urlString, displayFileName, builder, authToken, localPath,
+                 AppSettings.isMultithreadDownloadEnabled(getApplicationContext()),
+                 AppSettings.getDownloadThreadsCount(getApplicationContext()));
         }
 
+        // Very Legacy Overload (no localPath, multi-thread settings from AppSettings)
+         DownloadTask(long downloadId, String urlString, String displayFileName, NotificationCompat.Builder builder, String authToken) {
+            this(downloadId, urlString, displayFileName, builder, authToken, null,
+                 AppSettings.isMultithreadDownloadEnabled(getApplicationContext()),
+                 AppSettings.getDownloadThreadsCount(getApplicationContext()));
+        }
 
         public void pause() {
             isPaused = true;
@@ -1107,6 +1035,210 @@ public class DownloadService extends Service {
 
         @Override
         protected File doInBackground(Void... params) {
+            Log.i(TAG, "DownloadTask (" + this.downloadId + ") doInBackground. Multithread: " + this.multithreadEnabled + ", Threads: " + this.threadsCount + ", URL: " + this.urlString);
+
+            if (this.multithreadEnabled && this.threadsCount > 1 && performHeadRequest()) {
+                Log.i(TAG, "Proceeding with multi-threaded download for " + displayFileName + ". Total size: " + this.totalBytes + " bytes. Threads: " + this.threadsCount);
+
+                File partsDir = manageTempPartsDirectory(new File(this.localPath), this.threadsCount);
+                if (partsDir == null) {
+                    Log.e(TAG, "Failed to manage parts directory. Falling back to single-threaded download.");
+                    return singleThreadDownloadLogic();
+                }
+
+                this.segmentExecutor = Executors.newFixedThreadPool(this.threadsCount);
+                this.segmentFutures.clear();
+
+                // Initialize totalBytesDownloadedAcrossSegments by summing lengths of existing part files
+                this.totalBytesDownloadedAcrossSegments = 0;
+                for (int i = 0; i < this.threadsCount; i++) {
+                    File partFileCheck = new File(partsDir, "part_" + i);
+                    if (partFileCheck.exists()) {
+                        this.totalBytesDownloadedAcrossSegments += partFileCheck.length();
+                    }
+                }
+                Log.i(TAG, "Initial total downloaded across segments (from existing parts): " + this.totalBytesDownloadedAcrossSegments);
+                incrementOverallProgress(0); // Update UI with current sum
+
+                long basePartSize = this.totalBytes / this.threadsCount;
+
+                boolean setupError = false;
+                for (int i = 0; i < this.threadsCount; i++) {
+                    if (isCancelled || isPaused) { setupError = true; break; }
+                    long startByte = i * basePartSize;
+                    long endByte = (i == this.threadsCount - 1) ? this.totalBytes - 1 : startByte + basePartSize - 1;
+                    File partFile = new File(partsDir, "part_" + i);
+                    Log.d(TAG, "Segment " + i + ": Calculated range " + startByte + "-" + endByte + " for part file " + partFile.getName());
+                    try {
+                        SegmentDownloader segmentTask = new SegmentDownloader(new URL(this.urlString), startByte, endByte, partFile, this.authToken, i);
+                        this.segmentFutures.add(this.segmentExecutor.submit(segmentTask));
+                    } catch (MalformedURLException e) {
+                        Log.e(TAG, "MalformedURLException for segment " + i + ", URL: " + this.urlString, e);
+                        setupError = true;
+                        break;
+                    }
+                }
+
+                boolean allSegmentsSuccess = !setupError;
+                if (allSegmentsSuccess && !isCancelled && !isPaused) {
+                    for (Future<?> future : this.segmentFutures) {
+                        if (isCancelled || isPaused) { allSegmentsSuccess = false; break; }
+                        try {
+                            future.get();
+                        } catch (Exception e) {
+                            Log.e(TAG, "A segment download failed or was cancelled during future.get().", e);
+                            allSegmentsSuccess = false;
+                            for(Future<?> f : this.segmentFutures) { if (!f.isDone() && !f.isCancelled()) f.cancel(true); }
+                            break;
+                        }
+                    }
+                } else if (!setupError) {
+                    allSegmentsSuccess = false;
+                    Log.i(TAG, "Download was cancelled, paused, or setup error before all segment futures could be processed.");
+                }
+
+                if (this.segmentExecutor != null) {
+                     if (!allSegmentsSuccess || isCancelled || isPaused) { this.segmentExecutor.shutdownNow(); }
+                     else { this.segmentExecutor.shutdown(); }
+                }
+
+                if (isCancelled) {
+                    Log.i(TAG, "Download cancelled, cleaning up parts for " + displayFileName);
+                    deleteRecursive(partsDir);
+                    return null;
+                }
+                if (isPaused) {
+                    Log.i(TAG, "Download paused for " + displayFileName + ". Parts retained for potential resume.");
+                    return null;
+                }
+
+                if (allSegmentsSuccess) {
+                    if (this.totalBytesDownloadedAcrossSegments < this.totalBytes && this.totalBytes > 0) {
+                        Log.e(TAG, "Total downloaded bytes mismatch before merge. Expected: " + this.totalBytes + ", Got: " + this.totalBytesDownloadedAcrossSegments + ". Marking as failed.");
+                        updateDownloadStatus(this.downloadId, Download.STATUS_FAILED);
+                        return null;
+                    }
+
+                    Log.i(TAG, "All segments downloaded successfully for " + displayFileName + ". Starting merge.");
+                    if (notificationBuilder != null) {
+                        notificationBuilder.setContentText("Merging parts...").setProgress(0, 0, true);
+                        if (DownloadService.this.notificationManager != null) {
+                             DownloadService.this.notificationManager.notify((int) (NOTIFICATION_ID_BASE + downloadId), notificationBuilder.build());
+                        } else { Log.w(TAG, "notificationManager is null, cannot update notification for merging state."); }
+                    } else { Log.w(TAG, "notificationBuilder is null, cannot update notification for merging state."); }
+
+                    boolean mergeSuccess = mergePartFiles(partsDir, new File(this.localPath), this.threadsCount, basePartSize);
+                    if (mergeSuccess) {
+                        updateDownloadStatus(this.downloadId, Download.STATUS_COMPLETED);
+                        deleteRecursive(partsDir);
+                        return new File(this.localPath);
+                    } else {
+                        Log.e(TAG, "Failed to merge part files for " + displayFileName);
+                        updateDownloadStatus(this.downloadId, Download.STATUS_FAILED);
+                        deleteRecursive(partsDir);
+                        return null;
+                    }
+                } else {
+                    Log.e(TAG, "One or more segments failed or task was interrupted for " + displayFileName + ".");
+                    if (!isPaused && !isCancelled) { updateDownloadStatus(this.downloadId, Download.STATUS_FAILED); }
+                    return null;
+                }
+            } else {
+                 if (this.multithreadEnabled && this.threadsCount > 1) {
+                    Log.w(TAG, "Falling back to single-threaded download for " + displayFileName + " (HEAD failed or no range support/size).");
+                } else {
+                    Log.d(TAG, "Proceeding with single-threaded download for " + displayFileName);
+                }
+                return singleThreadDownloadLogic();
+            }
+        }
+
+        private synchronized void incrementOverallProgress(long delta) {
+            synchronized (progressLock) {
+                this.totalBytesDownloadedAcrossSegments += delta;
+                updateDownloadProgress(downloadId, this.totalBytesDownloadedAcrossSegments, this.totalBytes);
+
+                if (this.totalBytes > 0) {
+                    int progress = (int) ((this.totalBytesDownloadedAcrossSegments * 100) / this.totalBytes);
+                    publishProgress(progress);
+                } else {
+                    publishProgress(-1);
+                }
+            }
+
+            long currentTime = System.currentTimeMillis();
+            if (delta >= 0 && (currentTime - lastUpdateTime > 500 || this.totalBytesDownloadedAcrossSegments == this.totalBytes )) {
+                synchronized(progressLock) {
+                    long elapsedTime = currentTime - startTime;
+                    if (elapsedTime > 0) {
+                         this.speed = (double) this.totalBytesDownloadedAcrossSegments / (elapsedTime / 1000.0);
+                    } else {
+                        this.speed = (delta == 0 && elapsedTime == 0 && this.totalBytesDownloadedAcrossSegments == 0) ? 0 : this.speed;
+                    }
+                }
+                Intent intent = new Intent(ACTION_DOWNLOAD_PROGRESS);
+                intent.putExtra(EXTRA_DOWNLOAD_ID, downloadId);
+                intent.putExtra("progress", totalBytes > 0 ? (int) ((this.totalBytesDownloadedAcrossSegments * 100) / totalBytes) : 0);
+                intent.putExtra("downloadedBytes", this.totalBytesDownloadedAcrossSegments);
+                intent.putExtra("totalBytes", this.totalBytes);
+                intent.putExtra("speed", this.speed);
+                broadcastManager.sendBroadcast(intent);
+                lastUpdateTime = currentTime;
+            }
+        }
+
+        private boolean mergePartFiles(File partsDir, File targetFile, int numThreads, long segmentBaseSize) {
+            Log.i(TAG, "Merging " + numThreads + " part files into " + targetFile.getName());
+            long currentExpectedPartSize;
+
+            try (OutputStream fos = new FileOutputStream(targetFile)) {
+                for (int i = 0; i < numThreads; i++) {
+                    if (isCancelled) { Log.w(TAG, "Merging cancelled for " + targetFile.getName()); return false; }
+                    File partFile = new File(partsDir, "part_" + i);
+
+                    if (i == numThreads - 1 && totalBytes > 0) {
+                        currentExpectedPartSize = totalBytes - (segmentBaseSize * i);
+                    } else {
+                        currentExpectedPartSize = segmentBaseSize;
+                    }
+
+                    if (!partFile.exists() && currentExpectedPartSize > 0) {
+                         Log.e(TAG, "Part file missing: " + partFile.getAbsolutePath() + " for segment " + i + ", expected length " + currentExpectedPartSize);
+                         return false;
+                    }
+                    if (partFile.exists() && partFile.length() < currentExpectedPartSize) {
+                         Log.e(TAG, "Part file " + partFile.getAbsolutePath() + " is incomplete. Actual: " + partFile.length() + ", Expected: " + currentExpectedPartSize);
+                         return false;
+                    }
+
+                    if (partFile.exists() && partFile.length() > 0) {
+                        try (InputStream fis = new java.io.FileInputStream(partFile)) {
+                            byte[] buffer = new byte[8192];
+                            int bytesRead;
+                            while ((bytesRead = fis.read(buffer)) != -1) {
+                                if (isCancelled) { Log.w(TAG, "Merging cancelled during write for " + targetFile.getName()); return false; }
+                                fos.write(buffer, 0, bytesRead);
+                            }
+                        }
+                    } else if (partFile.exists() && partFile.length() == 0 && currentExpectedPartSize > 0) {
+                         Log.w(TAG, "Part file is empty but was expected to have content: " + partFile.getAbsolutePath());
+                         return false;
+                    }
+                }
+                Log.i(TAG, "Successfully merged part files for " + targetFile.getName());
+                if (totalBytes > 0 && targetFile.length() != totalBytes) {
+                    Log.e(TAG, "Merged file size (" + targetFile.length() + ") does not match expected total size (" + totalBytes + ").");
+                    return false;
+                }
+                return true;
+            } catch (IOException e) {
+                Log.e(TAG, "Error merging part files for " + targetFile.getName() + ": " + e.getMessage(), e);
+                return false;
+            }
+        }
+
+
+        private File singleThreadDownloadLogic() {
             InputStream input = null;
             OutputStream output = null;
             HttpURLConnection connection = null;
@@ -1114,17 +1246,16 @@ public class DownloadService extends Service {
             RandomAccessFile randomAccessFile = null;
 
             try {
-                Log.d(TAG, "DownloadTask (" + this.downloadId + "): doInBackground starting. URL: '" + this.urlString + "'. LocalPath: '" + this.localPath + "'. AuthToken: " + (this.authToken != null ? "present" : "null"));
+                // Note: this.fileName is now displayFileName. this.localPath is the full path.
+                Log.d(TAG, "DownloadTask (" + this.downloadId + "): singleThreadDownloadLogic starting. URL: '" + this.urlString + "'. LocalPath: '" + this.localPath + "'. AuthToken: " + (this.authToken != null ? "present" : "null"));
 
                 if (this.localPath == null || this.localPath.isEmpty()) {
-                    Log.e(TAG, "DownloadTask (" + this.downloadId + "): Local path is null or empty. Cannot proceed.");
+                    Log.e(TAG, "DownloadTask (" + this.downloadId + "): Local path is null or empty. Cannot proceed with singleThreadDownloadLogic.");
                     updateDownloadStatus(downloadId, Download.STATUS_FAILED);
                     return null;
                 }
 
                 downloadedFile = new File(this.localPath);
-
-                // Ensure parent directories exist for the specific file path
                 File parentDir = downloadedFile.getParentFile();
                 if (parentDir != null && !parentDir.exists()) {
                     if (!parentDir.mkdirs()) {
@@ -1133,135 +1264,102 @@ public class DownloadService extends Service {
                         return null;
                     }
                 }
-
-                // Update DB with the definitive local path, especially if it wasn't set before task execution
-                // (e.g. if DownloadTask was called by an older part of the code not yet updated to provide full path to startDownload)
+                // Ensure local path is in DB, could have been null if legacy constructor was used by an old call.
                 updateDownloadLocalPath(downloadId, this.localPath);
-                
-                // Configurar a conexão
+
                 URL url = new URL(urlString);
                 connection = (HttpURLConnection) url.openConnection();
 
-                // Add Cookie header if authToken is present (for Gofile direct links)
                 if (this.authToken != null && !this.authToken.isEmpty()) {
                     connection.setRequestProperty("Cookie", "accountToken=" + this.authToken);
-                    Log.d(TAG, "DownloadTask (" + this.downloadId + "): Added auth token to Cookie header.");
                 }
                 
-                // Se já temos bytes baixados, configurar o cabeçalho Range
                 if (downloadedBytes > 0) {
                     connection.setRequestProperty("Range", "bytes=" + downloadedBytes + "-");
                 }
                 
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(15000);
-                connection.connect(); // Connect AFTER setting all properties
+                connection.connect();
                 
                 int responseCode = connection.getResponseCode();
-                // Tratar resposta parcial (206) ou OK (200)
                 if (responseCode != HttpURLConnection.HTTP_OK && responseCode != HttpURLConnection.HTTP_PARTIAL) {
                     Log.e(TAG, "Server returned HTTP " + responseCode + " " + connection.getResponseMessage());
                     updateDownloadStatus(downloadId, Download.STATUS_FAILED);
                     return null;
                 }
                 
-                // Obter o tamanho total do arquivo (considerando Range)
-                if (totalBytes <= 0) {
-                    long contentLengthHeader = connection.getContentLength();
+                if (totalBytes <= 0) { // totalBytes might be pre-set from HEAD request or DB
+                    long contentLengthHeader = connection.getContentLengthLong(); // Use Long for safety
                     if (responseCode == HttpURLConnection.HTTP_PARTIAL) {
-                         // Se for parcial, o Content-Length é o restante, precisamos do tamanho total
                          String contentRange = connection.getHeaderField("Content-Range");
                          if (contentRange != null) {
                              try {
                                  totalBytes = Long.parseLong(contentRange.substring(contentRange.lastIndexOf('/') + 1));
                              } catch (Exception e) {
                                  Log.w(TAG, "Could not parse Content-Range: " + contentRange);
-                                 totalBytes = downloadedBytes + contentLengthHeader; // Estimativa
+                                 totalBytes = downloadedBytes + contentLengthHeader;
                              }
                          } else {
-                             totalBytes = downloadedBytes + contentLengthHeader; // Estimativa
+                             totalBytes = downloadedBytes + contentLengthHeader;
                          }
                     } else {
                          totalBytes = contentLengthHeader;
                     }
-
-                    if (totalBytes <= 0) {
-                        totalBytes = -1; // Desconhecido
-                    }
+                    if (totalBytes <= 0) totalBytes = -1;
                     updateDownloadTotalBytes(downloadId, totalBytes);
                 }
                 
-                // Abrir o arquivo para escrita
                 if (responseCode == HttpURLConnection.HTTP_PARTIAL) {
                     randomAccessFile = new RandomAccessFile(downloadedFile, "rw");
                     randomAccessFile.seek(downloadedBytes);
                     output = new FileOutputStream(randomAccessFile.getFD());
                 } else {
-                    // Se for 200 OK, começar do início (ou sobrescrever)
                     downloadedBytes = 0;
                     output = new FileOutputStream(downloadedFile);
                 }
                 
                 input = new BufferedInputStream(connection.getInputStream());
-                
-                byte[] data = new byte[8192]; // Buffer maior
+                byte[] data = new byte[8192];
                 int count;
                 long bytesSinceLastUpdate = 0;
                 
                 while ((count = input.read(data)) != -1) {
-                    if (isCancelled) {
-                        return null;
-                    }
+                    if (isCancelled) return null;
                     if (isPaused) {
-                        // Salvar o progresso atual antes de pausar
                         updateDownloadProgress(downloadId, downloadedBytes, totalBytes);
-                        return null; // Indica que foi pausado, não concluído
+                        return null;
                     }
                     
                     downloadedBytes += count;
                     bytesSinceLastUpdate += count;
                     output.write(data, 0, count);
                     
-                    // Atualizar o progresso (limitado a cada 500ms ou 1MB)
                     long currentTime = System.currentTimeMillis();
                     if (currentTime - lastUpdateTime > 500 || bytesSinceLastUpdate > (1024 * 1024)) {
                         updateDownloadProgress(downloadId, downloadedBytes, totalBytes);
-                        
-                        // Calcular a velocidade
                         long elapsedTime = currentTime - startTime;
-                        if (elapsedTime > 500) { // Evitar divisão por zero ou valores irreais no início
-                            speed = (double) downloadedBytes / (elapsedTime / 1000.0);
-                        }
+                        if (elapsedTime > 500) speed = (double) downloadedBytes / (elapsedTime / 1000.0);
                         
-                        // Publicar o progresso
-                        if (totalBytes > 0) {
-                            int progress = (int) ((downloadedBytes * 100) / totalBytes);
-                            publishProgress(progress);
-                        } else {
-                            publishProgress(-1); // Indeterminado
-                        }
+                        if (totalBytes > 0) publishProgress((int) ((downloadedBytes * 100) / totalBytes));
+                        else publishProgress(-1);
                         
-                        // Enviar broadcast para atualizar a UI
-                        Intent intent = new Intent(ACTION_DOWNLOAD_PROGRESS);
-                        intent.putExtra(EXTRA_DOWNLOAD_ID, downloadId);
-                        intent.putExtra("progress", totalBytes > 0 ? (int) ((downloadedBytes * 100) / totalBytes) : 0);
-                        intent.putExtra("downloadedBytes", downloadedBytes);
-                        intent.putExtra("totalBytes", totalBytes);
-                        intent.putExtra("speed", speed);
-                        broadcastManager.sendBroadcast(intent);
+                        Intent progressIntent = new Intent(ACTION_DOWNLOAD_PROGRESS);
+                        progressIntent.putExtra(EXTRA_DOWNLOAD_ID, downloadId);
+                        progressIntent.putExtra("progress", totalBytes > 0 ? (int) ((downloadedBytes * 100) / totalBytes) : 0);
+                        progressIntent.putExtra("downloadedBytes", downloadedBytes);
+                        progressIntent.putExtra("totalBytes", totalBytes);
+                        progressIntent.putExtra("speed", speed);
+                        broadcastManager.sendBroadcast(progressIntent);
                         
-                        // Resetar contador e atualizar timestamp
                         bytesSinceLastUpdate = 0;
                         lastUpdateTime = currentTime;
                     }
                 }
-                
-                // Download concluído
                 updateDownloadStatus(downloadId, Download.STATUS_COMPLETED);
                 return downloadedFile;
-                
             } catch (Exception e) {
-                Log.e(TAG, "DownloadTask (" + this.downloadId + "): Exception during download: " + e.getMessage(), e);
+                Log.e(TAG, "DownloadTask (" + this.downloadId + "): Exception during singleThreadDownloadLogic: " + e.getMessage(), e);
                 updateDownloadStatus(downloadId, Download.STATUS_FAILED);
                 return null;
             } finally {
@@ -1271,7 +1369,7 @@ public class DownloadService extends Service {
                     if (randomAccessFile != null) randomAccessFile.close();
                     if (connection != null) connection.disconnect();
                 } catch (IOException e) {
-                    Log.e(TAG, "Error closing streams: " + e.getMessage(), e);
+                    Log.e(TAG, "Error closing streams in singleThreadDownloadLogic: " + e.getMessage(), e);
                 }
             }
         }
@@ -1293,14 +1391,14 @@ public class DownloadService extends Service {
             activeDownloads.remove(downloadId);
             
             if (isPaused) {
-                Log.d(TAG, "Download paused: " + displayFileName); // Use displayFileName for logs
-                // Already handled in handlePauseDownload
+                Log.d(TAG, "Download paused: " + fileName);
+                // Já tratado em handlePauseDownload
             } else if (result != null) {
-                Log.d(TAG, "Download completed: " + displayFileName);
-                updateNotificationComplete(downloadId, displayFileName, result);
+                Log.d(TAG, "Download completed: " + fileName);
+                updateNotificationComplete(downloadId, fileName, result);
             } else {
-                Log.d(TAG, "Download failed: " + displayFileName);
-                updateNotificationError(downloadId, displayFileName);
+                Log.d(TAG, "Download failed: " + fileName);
+                updateNotificationError(downloadId, fileName);
             }
             
             // Enviar broadcast para atualizar a UI
@@ -1319,7 +1417,7 @@ public class DownloadService extends Service {
             super.onCancelled(result);
             isCancelled = true;
             activeDownloads.remove(downloadId);
-            Log.d(TAG, "Download cancelled: " + displayFileName); // Use displayFileName for logs
+            Log.d(TAG, "Download cancelled: " + fileName);
             // A limpeza (DB, notificação, arquivo) é feita em handleCancelDownload
             // Enviar broadcast para garantir que a UI atualize
             Intent intent = new Intent(ACTION_DOWNLOAD_STATUS_CHANGED);
@@ -1337,47 +1435,24 @@ public class DownloadService extends Service {
 
     // --- Database Operations ---
 
-    // Modified insertDownload to include localPath
-    private long insertDownload(String url, String displayFileName, String localPath) {
+    private long insertDownload(String url, String fileName) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(DownloadContract.DownloadEntry.COLUMN_NAME_URL, url);
-        values.put(DownloadContract.DownloadEntry.COLUMN_NAME_FILE_NAME, displayFileName); // Store display name
+        values.put(DownloadContract.DownloadEntry.COLUMN_NAME_FILE_NAME, fileName);
         values.put(DownloadContract.DownloadEntry.COLUMN_NAME_STATUS, Download.STATUS_PENDING);
         values.put(DownloadContract.DownloadEntry.COLUMN_NAME_TIMESTAMP, System.currentTimeMillis());
         values.put(DownloadContract.DownloadEntry.COLUMN_NAME_DOWNLOADED_BYTES, 0);
         values.put(DownloadContract.DownloadEntry.COLUMN_NAME_TOTAL_BYTES, -1);
-        values.put(DownloadContract.DownloadEntry.COLUMN_NAME_LOCAL_PATH, localPath); // Store full local path
+        // Inicialmente não há caminho local
+        values.putNull(DownloadContract.DownloadEntry.COLUMN_NAME_LOCAL_PATH);
 
         long id = db.insert(DownloadContract.DownloadEntry.TABLE_NAME, null, values);
         if (id == -1) {
-            Log.e(TAG, "Error inserting download record for: " + url + " at path " + localPath);
+            Log.e(TAG, "Error inserting download record for: " + url);
         }
         return id;
     }
-
-    // Legacy insertDownload (calls the new one with null localPath, DownloadTask will update it)
-    private long insertDownload(String url, String displayFileName) {
-        Log.w(TAG, "Legacy insertDownload called for URL: " + url + ". Local path will be set by DownloadTask or resume logic.");
-        return insertDownload(url, displayFileName, null);
-    }
-
-    // New method to get download ID by local path
-    private long getDownloadIdByLocalPath(String localPath) {
-        if (localPath == null || localPath.isEmpty()) return -1;
-        SQLiteDatabase db = dbHelper.getReadableDatabase();
-        String[] projection = { DownloadContract.DownloadEntry._ID };
-        String selection = DownloadContract.DownloadEntry.COLUMN_NAME_LOCAL_PATH + " = ?";
-        String[] selectionArgs = { localPath };
-        Cursor cursor = db.query(DownloadContract.DownloadEntry.TABLE_NAME, projection, selection, selectionArgs, null, null, null);
-        long id = -1;
-        if (cursor != null && cursor.moveToFirst()) {
-            id = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadContract.DownloadEntry._ID));
-            cursor.close();
-        }
-        return id;
-    }
-
 
     private void updateDownloadProgress(long downloadId, long downloadedBytes, long totalBytes) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
