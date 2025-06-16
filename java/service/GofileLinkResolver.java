@@ -22,7 +22,7 @@ public class GofileLinkResolver {
 
     private String extractContentId(String gofilePageUrl) {
         if (gofilePageUrl == null) return null;
-        Pattern pattern = Pattern.compile("gofile\.io/(?:d|download)/([\w-]+)");
+        Pattern pattern = Pattern.compile("gofile\\.io/(?:d|download)/([\\w-]+)");
         Matcher matcher = pattern.matcher(gofilePageUrl);
         if (matcher.find()) {
             return matcher.group(1);

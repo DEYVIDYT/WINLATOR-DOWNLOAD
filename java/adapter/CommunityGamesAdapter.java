@@ -2,41 +2,41 @@ package com.winlator.Download.adapter;
 
 import android.content.Context;
 import android.content.Intent;
-import android.net.Uri; // Added for Uri.parse
+// Uri.parse is no longer needed here if we don't open browser directly
+// import android.net.Uri;
 import android.util.Log;
-// import com.winlator.Download.DownloadManagerActivity; // Removed
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Filter; // Added
-import android.widget.Filterable; // Added
+import android.widget.Filter;
+import android.widget.Filterable;
+import android.widget.Toast; // Added for Toast message
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.winlator.Download.R;
 import com.winlator.Download.model.CommunityGame;
-// import com.winlator.Download.service.DownloadService; // Removed
+import com.winlator.Download.service.DownloadService; // Added for DownloadService
+import com.winlator.Download.DownloadManagerActivity; // Added for navigation
 
-import java.util.ArrayList; // Added
+import java.util.ArrayList;
 import java.util.List;
 
-public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAdapter.ViewHolder> implements Filterable { // Implemented Filterable
+public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAdapter.ViewHolder> implements Filterable {
 
-    private List<CommunityGame> communityGamesList; // Renamed for clarity, holds filtered list
-    private List<CommunityGame> communityGamesListFull; // For the original list
-    private Context context;
+    private List<CommunityGame> communityGamesList;
+    private List<CommunityGame> communityGamesListFull;
+    private Context context; // Already present, ensure it's used or removed if not needed by adapter itself
 
     public CommunityGamesAdapter(List<CommunityGame> communityGamesList, Context context) {
-        // When the adapter is created, the passed list is initially both full and filtered.
         this.communityGamesList = new ArrayList<>(communityGamesList);
         this.communityGamesListFull = new ArrayList<>(communityGamesList);
-        this.context = context;
+        this.context = context; // Keep context if needed for Toast or other UI from adapter
     }
 
-    // Method to update the list if needed from fragment, e.g., after fetching new data
     public void setGamesList(List<CommunityGame> games) {
         this.communityGamesList = new ArrayList<>(games);
         this.communityGamesListFull = new ArrayList<>(games);
@@ -53,30 +53,49 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        CommunityGame game = communityGamesList.get(position); // Use filtered list
+        CommunityGame game = communityGamesList.get(position);
         
         holder.tvGameName.setText(game.getName());
         holder.tvGameSize.setText(game.getSize());
         
         holder.btnDownload.setOnClickListener(v -> {
             String gameUrl = game.getUrl();
+            String gameName = game.getName(); // Get game name for EXTRA_FILE_NAME
+            Context itemContext = holder.itemView.getContext(); // Get context from item view
+
             if (gameUrl != null && !gameUrl.isEmpty()) {
-                try {
-                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(gameUrl));
-                    holder.itemView.getContext().startActivity(browserIntent);
-                    Log.d("CommunityGamesAdapter", "Opening URL in browser. Game: '" + game.getName() + "', URL: '" + gameUrl + "'");
-                } catch (Exception e) {
-                    Log.e("CommunityGamesAdapter", "Could not open URL: " + gameUrl, e);
+                Intent serviceIntent = new Intent(itemContext, DownloadService.class);
+
+                // Check if it's a Gofile URL
+                if (gameUrl.contains("gofile.io/d/") || gameUrl.contains("gofile.io/download/")) {
+                    Log.d("CommunityGamesAdapter", "Gofile URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
+                    serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD);
+                    serviceIntent.putExtra(DownloadService.EXTRA_GOFILE_URL, gameUrl);
+                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName); // Placeholder name
+                } else {
+                    Log.d("CommunityGamesAdapter", "Standard URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
+                    serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_START_DOWNLOAD);
+                    serviceIntent.putExtra(DownloadService.EXTRA_URL, gameUrl);
+                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
                 }
+
+                itemContext.startService(serviceIntent);
+                Toast.makeText(itemContext, "Download iniciado: " + gameName, Toast.LENGTH_SHORT).show();
+
+                // Navigate to DownloadManagerActivity
+                Intent activityIntent = new Intent(itemContext, DownloadManagerActivity.class);
+                itemContext.startActivity(activityIntent);
+
             } else {
-                Log.w("CommunityGamesAdapter", "Game URL is null or empty for: " + game.getName());
+                Log.w("CommunityGamesAdapter", "Game URL is null or empty for: " + gameName);
+                Toast.makeText(itemContext, "URL de download inválida para: " + gameName, Toast.LENGTH_SHORT).show();
             }
         });
     }
 
     @Override
     public int getItemCount() {
-        return communityGamesList.size(); // Use filtered list
+        return communityGamesList.size();
     }
 
     @Override
@@ -126,4 +145,3 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
         }
     }
 }
-
