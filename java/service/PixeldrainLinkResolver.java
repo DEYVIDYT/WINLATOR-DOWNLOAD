@@ -2,8 +2,7 @@ package com.winlator.Download.service;
 
 import android.util.Log;
 
-// Assuming DownloadItem is in the model package, adjust if necessary
-import com.winlator.Download.model.DownloadItem;
+import com.winlator.Download.service.DownloadItem; // Changed import
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -121,7 +120,7 @@ public class PixeldrainLinkResolver {
                 // or if we want the final location. For now, let's stick to the directDownloadUrl (API URL).
                 // The DownloadService's DownloadTask should handle redirects during GET.
 
-                return new DownloadItem(directDownloadUrl, fileName, fileSize);
+                return new DownloadItem(fileName, directDownloadUrl, fileSize, null);
 
             } else {
                 Log.e(TAG, "Failed to get file info. HTTP Response Code: " + responseCode + " for URL: " + directDownloadUrl);
