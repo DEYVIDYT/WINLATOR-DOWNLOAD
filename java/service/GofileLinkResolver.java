@@ -84,21 +84,25 @@ public class GofileLinkResolver {
         }
         Log.d(TAG, "Using Gofile account token for API call.");
 
+        String dynamicWt = AppSettings.getDynamicGofileWt(context);
+        if (dynamicWt == null || dynamicWt.isEmpty()) {
+            Log.e(TAG, "Failed to obtain dynamic Gofile WT. Cannot proceed.");
+            return new GofileResolvedResult(new ArrayList<>(), accountToken); // Return empty result, but with accountToken
+        }
+        Log.d(TAG, "Using dynamic Gofile WT: " + dynamicWt);
+
         String hashedPassword = null;
         if (password != null && !password.isEmpty()) {
             hashedPassword = sha256(password);
             if (hashedPassword == null) {
                 Log.e(TAG, "Password hashing failed. Proceeding without password.");
-                // Potentially return error if password was critical and hashing failed
             } else {
                  Log.d(TAG, "Password provided and hashed.");
             }
         }
 
-        // Construct API URL
-        // The wt (website token) parameter might be optional if using Bearer token, but the python script includes it.
-        // Re-adding wt and sort parameters to match python script.
-        String apiUrl = "https://api.gofile.io/contents/" + contentId + "?wt=4fd6sg89d7s6&cache=true&sortField=createTime&sortDirection=1";
+        // Construct API URL using dynamicWt and removing sort parameters
+        String apiUrl = "https://api.gofile.io/contents/" + contentId + "?wt=" + dynamicWt + "&cache=true";
 
         if (hashedPassword != null) {
             try {
