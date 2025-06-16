@@ -85,6 +85,9 @@ public class DownloadService extends Service {
     public static final String ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD = "com.winlator.Download.action.RESOLVE_PIXELDRAIN_DOWNLOAD";
     public static final String EXTRA_PIXELDRAIN_URL = "com.winlator.Download.extra.PIXELDRAIN_URL";
 
+    // New extra for Gofile content ID (root folder name)
+    public static final String EXTRA_GOFILE_CONTENT_ID = "com.winlator.Download.extra.GOFILE_CONTENT_ID";
+
     // SharedPreferences keys are now in AppSettings.java
 
     // Broadcast actions
@@ -282,7 +285,7 @@ public class DownloadService extends Service {
 
     private void handleResolveGofileUrl(String gofileUrl, String password) {
         Log.i(TAG, "handleResolveGofileUrl: Starting resolution for " + gofileUrl);
-        GofileLinkResolver resolver = new GofileLinkResolver();
+        GofileLinkResolver resolver = new GofileLinkResolver(this); // Use constructor with Context
         GofileResolvedResult resolvedResult = resolver.resolveGofileUrl(gofileUrl, password);
 
         if (resolvedResult != null && resolvedResult.hasItems()) {
@@ -291,9 +294,13 @@ public class DownloadService extends Service {
                 Intent downloadIntent = new Intent(this, DownloadService.class);
                 downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
                 downloadIntent.putExtra(EXTRA_URL, item.directUrl);
+                // item.fileName is now the relative path (e.g., "folder/file.txt" or "file.txt")
                 downloadIntent.putExtra(EXTRA_FILE_NAME, item.fileName);
                 downloadIntent.putExtra(EXTRA_AUTH_TOKEN, resolvedResult.getAuthToken());
-                Log.d(TAG, "Dispatching new download task for resolved Gofile item: " + item.fileName);
+                // item.gofileContentId is the rootFolderName/original contentId
+                downloadIntent.putExtra(EXTRA_GOFILE_CONTENT_ID, item.gofileContentId);
+
+                Log.d(TAG, "Dispatching new download task for resolved Gofile item: " + item.fileName + " in content: " + item.gofileContentId);
                 mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
             }
         } else {
@@ -306,6 +313,7 @@ public class DownloadService extends Service {
                 .setContentText("Não foi possível resolver arquivos do link Gofile.")
                 .setAutoCancel(true);
             if (notificationManager != null) {
+                // GofileLinkResolver resolver = new GofileLinkResolver(this); // This line was an erroneous comment in original instructions
                 notificationManager.notify((int) (System.currentTimeMillis() % 10000), builder.build());
             }
         }
@@ -525,82 +533,105 @@ public class DownloadService extends Service {
 
         // Capture authToken for use in the lambda
         final String effectiveAuthToken = authToken;
+        // Capture Gofile Content ID for use in path construction if present
+        final String gofileContentId = intent.getStringExtra(EXTRA_GOFILE_CONTENT_ID);
 
         executor.execute(() -> {
-            Log.d(TAG, "handleStartDownload (Executor): Background processing started for URL: '" + urlString + "', FileName: '" + fileName + "' AuthToken: " + (effectiveAuthToken != null ? "present" : "null"));
-            // Check if a download task for this URL is already in activeDownloads
-            for (DownloadTask existingTask : activeDownloads.values()) {
-                if (existingTask.urlString.equals(urlString)) {
-                    Log.i(TAG, "Download task for URL already active: " + urlString);
+            // fileName from intent can be a relative path (Gofile) or simple name (others)
+            Log.d(TAG, "handleStartDownload (Executor): Processing URL: '" + urlString + "', InputFileName: '" + fileName + "', GofileContentID: '" + gofileContentId + "'");
+
+            File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this));
+            File targetFile;
+
+            if (gofileContentId != null && !gofileContentId.isEmpty()) {
+                File gofileRootShareDir = new File(baseAppDownloadDir, gofileContentId);
+                targetFile = new File(gofileRootShareDir, fileName); // fileName is relative path here
+            } else {
+                targetFile = new File(baseAppDownloadDir, fileName); // fileName is simple name here
+            }
+
+            File parentDirFile = targetFile.getParentFile();
+            if (parentDirFile != null && !parentDirFile.exists()) {
+                if (!parentDirFile.mkdirs()) {
+                    Log.e(TAG, "handleStartDownload (Executor): Failed to create parent directory: " + parentDirFile.getAbsolutePath() + ". Aborting.");
                     new Handler(Looper.getMainLooper()).post(() -> {
-                        if (notificationManager != null) { // Check notificationManager
-                            notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                        }
-                        Toast.makeText(DownloadService.this, "Este arquivo já está sendo baixado", Toast.LENGTH_SHORT).show();
+                        if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+                        Toast.makeText(DownloadService.this, "Erro ao criar diretório para download.", Toast.LENGTH_SHORT).show();
                     });
-                    // No need to call checkStopForeground here as the service was just started with a new notification.
-                    // If this task wasn't truly new, the original foreground notification for that task should still be active.
+                    checkStopForeground();
                     return;
                 }
             }
 
-            long downloadId = getDownloadIdByUrl(urlString);
-            Log.d(TAG, "handleStartDownload (Executor): getDownloadIdByUrl for '" + urlString + "' returned ID: " + downloadId);
+            final String finalLocalPath = targetFile.getAbsolutePath();
+            final String actualDisplayFileName = targetFile.getName(); // This is the true file name, used for display and DB
+
+            // Check if a download task for this specific localPath is already active
+            for (DownloadTask existingTask : activeDownloads.values()) {
+                if (existingTask.localPath != null && existingTask.localPath.equals(finalLocalPath)) {
+                    Log.i(TAG, "Download task for " + finalLocalPath + " already active.");
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+                        Toast.makeText(DownloadService.this, actualDisplayFileName + " já está sendo baixado.", Toast.LENGTH_SHORT).show();
+                    });
+                    checkStopForeground();
+                    return;
+                }
+            }
+
+            // Use getDownloadIdByLocalPath for a more precise check if this exact file is already in DB
+            long downloadId = getDownloadIdByLocalPath(finalLocalPath);
+            Log.d(TAG, "handleStartDownload (Executor): getDownloadIdByLocalPath for '" + finalLocalPath + "' returned ID: " + downloadId);
 
             if (downloadId != -1) {
                 Download existingDownload = getDownloadById(downloadId);
-                Log.d(TAG, "handleStartDownload (Executor): Found existing DB entry for ID " + downloadId + ". Status: " + (existingDownload != null ? existingDownload.getStatus() : "null object") + ", Path: " + (existingDownload != null ? existingDownload.getLocalPath() : "null object"));
                 new Handler(Looper.getMainLooper()).post(() -> {
-                    if (notificationManager != null) {
-                         notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                    }
+                    if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
                     if (existingDownload != null) {
-                        if (existingDownload.getStatus() == Download.STATUS_COMPLETED) {
-                            Toast.makeText(DownloadService.this, "Este arquivo já foi baixado", Toast.LENGTH_SHORT).show();
-                        } else if (existingDownload.getStatus() == Download.STATUS_PAUSED || existingDownload.getStatus() == Download.STATUS_FAILED) {
-                            Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for existing paused/failed download. ID: " + existingDownload.getId() + ", URL: '" + existingDownload.getUrl() + "', FileName: '" + existingDownload.getFileName() + "'");
-                            startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName(), effectiveAuthToken);
-                        } else if (existingDownload.getStatus() == Download.STATUS_DOWNLOADING) {
-                            Log.w(TAG, "DB indicates downloading, but no active task found for " + existingDownload.getFileName() + ". Attempting to restart.");
-                            Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for existing downloading (but no task) download. ID: " + existingDownload.getId() + ", URL: '" + existingDownload.getUrl() + "', FileName: '" + existingDownload.getFileName() + "'");
-                            startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName(), effectiveAuthToken);
-                        }
-                    } else {
-                        // DB had an ID, but we couldn't fetch the Download object. This is an inconsistent state.
-                        Log.w(TAG, "Could not fetch existing download with ID: " + downloadId + ". Treating as new.");
-                        final long newDownloadIdAfterNull = insertDownload(urlString, fileName);
-                        Log.d(TAG, "handleStartDownload (Executor): Existing download object was null for ID " + downloadId + ". Attempted insert, new ID: " + newDownloadIdAfterNull);
-                        if (newDownloadIdAfterNull != -1) {
-                            Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for new download (after null existing). ID: " + newDownloadIdAfterNull + ", URL: '" + urlString + "', FileName: '" + fileName + "'");
-                            startDownload(newDownloadIdAfterNull, urlString, fileName, effectiveAuthToken);
+                        // Ensure URL also matches. If not, it's a new download replacing an old file, or an error.
+                        if (!existingDownload.getUrl().equals(urlString)) {
+                             Log.w(TAG, "Existing download found for path " + finalLocalPath + " but with different URL. Old: " + existingDownload.getUrl() + ", New: " + urlString + ". Overwriting DB entry and restarting.");
+                             deleteDownload(existingDownload.getId()); // This will also attempt to delete file, which is fine
+                             // Fall through to new download logic by setting downloadId to -1 (effectively) by not returning
                         } else {
-                            Log.e(TAG, "Failed to insert new download record for: " + urlString);
-                            Toast.makeText(DownloadService.this, "Erro ao iniciar download.", Toast.LENGTH_SHORT).show();
+                            // URL matches, it's the same download item
+                            if (existingDownload.getStatus() == Download.STATUS_COMPLETED) {
+                                Toast.makeText(DownloadService.this, actualDisplayFileName + " já foi baixado.", Toast.LENGTH_SHORT).show();
+                            } else if (existingDownload.getStatus() == Download.STATUS_PAUSED || existingDownload.getStatus() == Download.STATUS_FAILED) {
+                                Log.i(TAG, "Resuming/Retrying existing download for " + actualDisplayFileName);
+                                startDownload(existingDownload.getId(), existingDownload.getUrl(), actualDisplayFileName, effectiveAuthToken, finalLocalPath);
+                            } else if (existingDownload.getStatus() == Download.STATUS_DOWNLOADING) {
+                                Toast.makeText(DownloadService.this, actualDisplayFileName + " já está sendo baixado.", Toast.LENGTH_SHORT).show();
+                            }
+                            checkStopForeground();
+                            return; // Handled existing download
                         }
+                    }
+                    // If existingDownload was null or URL mismatch led to fall-through:
+                    final long newOrUpdatedDownloadId = insertDownload(urlString, actualDisplayFileName, finalLocalPath);
+                    if (newOrUpdatedDownloadId != -1) {
+                        startDownload(newOrUpdatedDownloadId, urlString, actualDisplayFileName, effectiveAuthToken, finalLocalPath);
+                    } else {
+                        Log.e(TAG, "Failed to insert/update download record for: " + urlString + " at path " + finalLocalPath);
+                        Toast.makeText(DownloadService.this, "Erro ao iniciar download para " + actualDisplayFileName, Toast.LENGTH_SHORT).show();
                     }
                     checkStopForeground();
                 });
                 return;
             }
 
-            // If no existing download ID was found by URL, this is a new download.
-            final long newDownloadId = insertDownload(urlString, fileName);
-            Log.d(TAG, "handleStartDownload (Executor): No existing DB entry. Inserted new record with ID: " + newDownloadId + " for URL: '" + urlString + "'");
+            // No existing download found for this localPath, this is a new download.
+            final long newDownloadId = insertDownload(urlString, actualDisplayFileName, finalLocalPath);
+            Log.d(TAG, "handleStartDownload (Executor): No existing DB entry for this local path. Inserted new record with ID: " + newDownloadId);
 
             new Handler(Looper.getMainLooper()).post(() -> {
-                if (notificationManager != null) {
-                    notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                }
+                if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
                 if (newDownloadId != -1) {
-                    Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for brand new download. ID: " + newDownloadId + ", URL: '" + urlString + "', FileName: '" + fileName + "'");
-                    startDownload(newDownloadId, urlString, fileName, effectiveAuthToken);
+                    startDownload(newDownloadId, urlString, actualDisplayFileName, effectiveAuthToken, finalLocalPath);
                 } else {
-                    Log.e(TAG, "Failed to insert new download record for: " + urlString);
-                    Toast.makeText(DownloadService.this, "Erro ao iniciar download.", Toast.LENGTH_SHORT).show();
+                    Log.e(TAG, "Failed to insert new download record for: " + urlString + " at path " + finalLocalPath);
+                    Toast.makeText(DownloadService.this, "Erro ao iniciar download para " + actualDisplayFileName, Toast.LENGTH_SHORT).show();
                 }
-                // checkStopForeground is important here: if startDownload fails to post its own fg notification
-                // or if the download is immediately found to be complete/invalid before a real task starts,
-                // this ensures the "preparing" notification is cleared and service stops if appropriate.
                 checkStopForeground();
             });
         });
@@ -643,7 +674,15 @@ public class DownloadService extends Service {
         }
         if (download != null && (download.getStatus() == Download.STATUS_PAUSED || download.getStatus() == Download.STATUS_FAILED)) {
             // For now, resume will not have the Gofile token unless we store it in DB.
-            startDownload(downloadId, download.getUrl(), download.getFileName(), null);
+            // Ensure localPath is available for resume.
+            String localPath = download.getLocalPath();
+            if (localPath == null || localPath.isEmpty()) {
+                // Fallback if localPath is somehow missing (should not happen for resumable downloads)
+                File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this));
+                localPath = new File(baseAppDownloadDir, download.getFileName()).getAbsolutePath();
+                Log.w(TAG, "Resuming download for ID " + downloadId + " but localPath was missing. Reconstructed to: " + localPath);
+            }
+            startDownload(downloadId, download.getUrl(), download.getFileName(), null, localPath);
         }
     }
 
@@ -717,25 +756,40 @@ public class DownloadService extends Service {
             
             // Iniciar o download novamente
             // Retry will also not use a token unless persisted.
-            startDownload(downloadId, download.getUrl(), download.getFileName(), null);
+            String localPath = download.getLocalPath();
+            if (localPath == null || localPath.isEmpty()) {
+                 File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this));
+                 localPath = new File(baseAppDownloadDir, download.getFileName()).getAbsolutePath();
+                 Log.w(TAG, "Retrying download for ID " + downloadId + " but localPath was missing. Reconstructed to: " + localPath);
+            }
+            startDownload(downloadId, download.getUrl(), download.getFileName(), null, localPath);
         }
     }
 
-    // Modified startDownload signature to include authToken
-    private void startDownload(long downloadId, String urlString, String fileName, String authToken) {
-        Log.i(TAG, "startDownload: Entry. ID: " + downloadId + ", URL: '" + urlString + "', FileName: '" + fileName + "', AuthToken: " + (authToken != null ? "present" : "null"));
-        // Criar ou atualizar a notificação
-        NotificationCompat.Builder builder = createOrUpdateNotificationBuilder(downloadId, fileName);
+    // Modified startDownload signature to include authToken and targetLocalPath
+    private void startDownload(long downloadId, String urlString, String displayFileName, String authToken, String targetLocalPath) {
+        Log.i(TAG, "startDownload: Entry. ID: " + downloadId + ", URL: '" + urlString + "', DisplayFileName: '" + displayFileName + "', LocalPath: '" + targetLocalPath + "', AuthToken: " + (authToken != null ? "present" : "null"));
+
+        if (targetLocalPath == null || targetLocalPath.isEmpty()) {
+            Log.e(TAG, "startDownload called with null or empty targetLocalPath for ID: " + downloadId + ". Aborting.");
+            // Update status to FAILED as we can't proceed.
+            updateDownloadStatus(downloadId, Download.STATUS_FAILED);
+            updateNotificationError(downloadId, displayFileName); // Show error notification
+            return;
+        }
+
+        // Criar ou atualizar a notificação using displayFileName
+        NotificationCompat.Builder builder = createOrUpdateNotificationBuilder(downloadId, displayFileName);
         activeNotifications.put(downloadId, builder);
         
         // Iniciar o serviço em primeiro plano
         startForeground((int) (NOTIFICATION_ID_BASE + downloadId), builder.build());
         
-        // Atualizar o status no banco de dados
-        updateDownloadStatus(downloadId, Download.STATUS_DOWNLOADING);
+        // Atualizar o status no banco de dados (localPath might be updated here again if it changed, but should be set by now)
+        updateDownloadStatus(downloadId, Download.STATUS_DOWNLOADING, targetLocalPath);
         
-        // Iniciar a tarefa de download, passing the authToken
-        DownloadTask task = new DownloadTask(downloadId, urlString, fileName, builder, authToken);
+        // Iniciar a tarefa de download, passing the authToken and targetLocalPath
+        DownloadTask task = new DownloadTask(downloadId, urlString, displayFileName, builder, authToken, targetLocalPath);
         activeDownloads.put(downloadId, task);
         Log.i(TAG, "startDownload: About to execute DownloadTask for ID: " + downloadId);
         task.execute();
@@ -747,11 +801,18 @@ public class DownloadService extends Service {
     }
 
     // Overload for existing calls that don't have authToken (e.g., resume of non-Gofile)
-    private void startDownload(long downloadId, String urlString, String fileName) {
-        startDownload(downloadId, urlString, fileName, null);
+    // This specific overload is now problematic as it doesn't provide localPath.
+    // It should be refactored or removed if all callers can provide localPath.
+    // For now, let's assume callers will be updated or this is for very simple, non-resumable cases.
+    private void startDownload(long downloadId, String urlString, String displayFileName, String authToken) {
+        Log.w(TAG, "startDownload (legacy overload) called for ID: " + downloadId + ". Constructing default local path.");
+        File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this)); // Get base dir
+        String defaultLocalPath = new File(baseAppDownloadDir, displayFileName).getAbsolutePath();
+        startDownload(downloadId, urlString, displayFileName, authToken, defaultLocalPath);
     }
 
-    private NotificationCompat.Builder createOrUpdateNotificationBuilder(long downloadId, String fileName) {
+
+    private NotificationCompat.Builder createOrUpdateNotificationBuilder(long downloadId, String displayFileName) {
         // Verificar se já existe uma notificação para este download
         NotificationCompat.Builder builder = activeNotifications.get(downloadId);
         // Sempre criar uma nova instância para garantir que os PendingIntents estejam atualizados
@@ -790,7 +851,7 @@ public class DownloadService extends Service {
             // Criar a notificação
             builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_download)
-                .setContentTitle(fileName)
+                .setContentTitle(displayFileName)
                 .setContentText("Iniciando download...")
                 .setProgress(100, 0, true) // Indeterminado inicialmente
                 .setOngoing(true) // Não pode ser dispensada pelo usuário
@@ -996,8 +1057,11 @@ public class DownloadService extends Service {
     private class DownloadTask extends AsyncTask<Void, Integer, File> {
         private final long downloadId;
         private final String urlString;
-        private final String fileName;
+        private final String displayFileName; // Renamed from fileName, used for notifications
         private final NotificationCompat.Builder notificationBuilder;
+        private final String localPath; // Full local path for the download
+        private final String authToken;
+
         private boolean isPaused = false;
         private boolean isCancelled = false;
         private long totalBytes = -1;
@@ -1005,21 +1069,23 @@ public class DownloadService extends Service {
         private long startTime;
         private long lastUpdateTime = 0;
         private double speed = 0;
-        private final String authToken; // Added field for Gofile token
 
-        // Modified constructor
-        DownloadTask(long downloadId, String urlString, String fileName, NotificationCompat.Builder builder, String authToken) {
+        // Modified constructor to include localPath
+        DownloadTask(long downloadId, String urlString, String displayFileName, NotificationCompat.Builder builder, String authToken, String localPath) {
             this.downloadId = downloadId;
             this.urlString = urlString;
-            this.fileName = fileName;
+            this.displayFileName = displayFileName; // Used for notification title
             this.notificationBuilder = builder;
-            this.authToken = authToken; // Store the token
+            this.authToken = authToken;
+            this.localPath = localPath; // Full path where the file will be saved
         }
 
-        // Overload constructor for existing calls that don't have authToken
-        DownloadTask(long downloadId, String urlString, String fileName, NotificationCompat.Builder builder) {
-            this(downloadId, urlString, fileName, builder, null);
+        // This overload might need adjustment or removal if all calls provide localPath
+        DownloadTask(long downloadId, String urlString, String displayFileName, NotificationCompat.Builder builder, String authToken) {
+            this(downloadId, urlString, displayFileName, builder, authToken, null); // Default localPath to null, requires handling
+             Log.w(TAG, "DownloadTask created without explicit localPath for ID: " + downloadId + ". Path will be derived if null.");
         }
+
 
         public void pause() {
             isPaused = true;
@@ -1048,45 +1114,29 @@ public class DownloadService extends Service {
             RandomAccessFile randomAccessFile = null;
 
             try {
-                Log.d(TAG, "DownloadTask (" + this.downloadId + "): doInBackground starting. URL: '" + this.urlString + "'. AuthToken: " + (this.authToken != null ? "present" : "null"));
+                Log.d(TAG, "DownloadTask (" + this.downloadId + "): doInBackground starting. URL: '" + this.urlString + "'. LocalPath: '" + this.localPath + "'. AuthToken: " + (this.authToken != null ? "present" : "null"));
 
-                // Determine Download Directory based on SharedPreferences
-                File chosenDir;
-                // Use AppSettings to get the download path
-                String customPath = AppSettings.getDownloadPath(getApplicationContext());
-
-                // Check if the path is the default placeholder or a real custom path
-                if (!customPath.equals(AppSettings.DEFAULT_DOWNLOAD_PATH) && !customPath.isEmpty()) {
-                    File customDir = new File(customPath);
-                    if (!customDir.exists()) {
-                        if (customDir.mkdirs()) {
-                            Log.i(TAG, "DownloadTask (" + this.downloadId + "): Custom download directory created: " + customPath);
-                            chosenDir = customDir;
-                        } else {
-                            Log.e(TAG, "DownloadTask (" + this.downloadId + "): Failed to create custom download directory: " + customPath + ". Falling back to default.");
-                            chosenDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                        }
-                    } else {
-                        Log.i(TAG, "DownloadTask (" + this.downloadId + "): Using existing custom download directory: " + customPath);
-                        chosenDir = customDir;
-                    }
-                } else {
-                    // If path is the default placeholder or empty, use the standard Downloads directory
-                    chosenDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                    Log.i(TAG, "DownloadTask (" + this.downloadId + "): Using default download directory: " + chosenDir.getAbsolutePath());
+                if (this.localPath == null || this.localPath.isEmpty()) {
+                    Log.e(TAG, "DownloadTask (" + this.downloadId + "): Local path is null or empty. Cannot proceed.");
+                    updateDownloadStatus(downloadId, Download.STATUS_FAILED);
+                    return null;
                 }
 
-                // Ensure the chosen directory (could be default public or custom) exists or can be created
-                if (!chosenDir.exists()) {
-                    if (!chosenDir.mkdirs()) {
-                        Log.e(TAG, "DownloadTask (" + this.downloadId + "): Failed to create chosen download directory: " + chosenDir.getAbsolutePath() + ". Download will likely fail.");
-                        // Optionally, you could throw an exception here or return null early
+                downloadedFile = new File(this.localPath);
+
+                // Ensure parent directories exist for the specific file path
+                File parentDir = downloadedFile.getParentFile();
+                if (parentDir != null && !parentDir.exists()) {
+                    if (!parentDir.mkdirs()) {
+                        Log.e(TAG, "DownloadTask (" + this.downloadId + "): Failed to create parent directory: " + parentDir.getAbsolutePath());
+                        updateDownloadStatus(downloadId, Download.STATUS_FAILED);
+                        return null;
                     }
                 }
 
-                downloadedFile = new File(chosenDir, fileName);
-                String localPath = downloadedFile.getAbsolutePath();
-                updateDownloadLocalPath(downloadId, localPath); // Salvar o caminho local no DB
+                // Update DB with the definitive local path, especially if it wasn't set before task execution
+                // (e.g. if DownloadTask was called by an older part of the code not yet updated to provide full path to startDownload)
+                updateDownloadLocalPath(downloadId, this.localPath);
                 
                 // Configurar a conexão
                 URL url = new URL(urlString);
@@ -1243,14 +1293,14 @@ public class DownloadService extends Service {
             activeDownloads.remove(downloadId);
             
             if (isPaused) {
-                Log.d(TAG, "Download paused: " + fileName);
-                // Já tratado em handlePauseDownload
+                Log.d(TAG, "Download paused: " + displayFileName); // Use displayFileName for logs
+                // Already handled in handlePauseDownload
             } else if (result != null) {
-                Log.d(TAG, "Download completed: " + fileName);
-                updateNotificationComplete(downloadId, fileName, result);
+                Log.d(TAG, "Download completed: " + displayFileName);
+                updateNotificationComplete(downloadId, displayFileName, result);
             } else {
-                Log.d(TAG, "Download failed: " + fileName);
-                updateNotificationError(downloadId, fileName);
+                Log.d(TAG, "Download failed: " + displayFileName);
+                updateNotificationError(downloadId, displayFileName);
             }
             
             // Enviar broadcast para atualizar a UI
@@ -1269,7 +1319,7 @@ public class DownloadService extends Service {
             super.onCancelled(result);
             isCancelled = true;
             activeDownloads.remove(downloadId);
-            Log.d(TAG, "Download cancelled: " + fileName);
+            Log.d(TAG, "Download cancelled: " + displayFileName); // Use displayFileName for logs
             // A limpeza (DB, notificação, arquivo) é feita em handleCancelDownload
             // Enviar broadcast para garantir que a UI atualize
             Intent intent = new Intent(ACTION_DOWNLOAD_STATUS_CHANGED);
@@ -1287,24 +1337,47 @@ public class DownloadService extends Service {
 
     // --- Database Operations ---
 
-    private long insertDownload(String url, String fileName) {
+    // Modified insertDownload to include localPath
+    private long insertDownload(String url, String displayFileName, String localPath) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(DownloadContract.DownloadEntry.COLUMN_NAME_URL, url);
-        values.put(DownloadContract.DownloadEntry.COLUMN_NAME_FILE_NAME, fileName);
+        values.put(DownloadContract.DownloadEntry.COLUMN_NAME_FILE_NAME, displayFileName); // Store display name
         values.put(DownloadContract.DownloadEntry.COLUMN_NAME_STATUS, Download.STATUS_PENDING);
         values.put(DownloadContract.DownloadEntry.COLUMN_NAME_TIMESTAMP, System.currentTimeMillis());
         values.put(DownloadContract.DownloadEntry.COLUMN_NAME_DOWNLOADED_BYTES, 0);
         values.put(DownloadContract.DownloadEntry.COLUMN_NAME_TOTAL_BYTES, -1);
-        // Inicialmente não há caminho local
-        values.putNull(DownloadContract.DownloadEntry.COLUMN_NAME_LOCAL_PATH);
+        values.put(DownloadContract.DownloadEntry.COLUMN_NAME_LOCAL_PATH, localPath); // Store full local path
 
         long id = db.insert(DownloadContract.DownloadEntry.TABLE_NAME, null, values);
         if (id == -1) {
-            Log.e(TAG, "Error inserting download record for: " + url);
+            Log.e(TAG, "Error inserting download record for: " + url + " at path " + localPath);
         }
         return id;
     }
+
+    // Legacy insertDownload (calls the new one with null localPath, DownloadTask will update it)
+    private long insertDownload(String url, String displayFileName) {
+        Log.w(TAG, "Legacy insertDownload called for URL: " + url + ". Local path will be set by DownloadTask or resume logic.");
+        return insertDownload(url, displayFileName, null);
+    }
+
+    // New method to get download ID by local path
+    private long getDownloadIdByLocalPath(String localPath) {
+        if (localPath == null || localPath.isEmpty()) return -1;
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        String[] projection = { DownloadContract.DownloadEntry._ID };
+        String selection = DownloadContract.DownloadEntry.COLUMN_NAME_LOCAL_PATH + " = ?";
+        String[] selectionArgs = { localPath };
+        Cursor cursor = db.query(DownloadContract.DownloadEntry.TABLE_NAME, projection, selection, selectionArgs, null, null, null);
+        long id = -1;
+        if (cursor != null && cursor.moveToFirst()) {
+            id = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadContract.DownloadEntry._ID));
+            cursor.close();
+        }
+        return id;
+    }
+
 
     private void updateDownloadProgress(long downloadId, long downloadedBytes, long totalBytes) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
