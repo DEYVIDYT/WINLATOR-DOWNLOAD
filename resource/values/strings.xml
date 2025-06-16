@@ -42,4 +42,21 @@
         <item>MB</item>
         <item>GB</item>
     </string-array>
+    <string name="direct_download_disclaimer_title">About Direct Downloads (Experimental)</string>
+    <string name="direct_download_disclaimer_message">
+        This feature attempts to download files directly from certain hosting services using the app\'s built-in download manager, potentially skipping intermediate web pages.\n\n
+        • &lt;b&gt;Reliability:&lt;/b&gt; This is an experimental feature. Success may vary, and downloads might not always work if hosting websites change their structure. This feature relies on analyzing page content, which can break.\n\n
+        • &lt;b&gt;Supported Hosts (Current Status):&lt;/b&gt;\n
+            - MediaFire: Active support.\n
+            - Google Drive: Active support (may involve confirmation steps).\n
+            - Archive.org: Active support.\n
+            - Buzzheavier, Gofile.io, Datanodes.to, Pixeldrain: Experimental (direct links may not be found).\n
+            Check for app updates for improvements and more supported hosts.\n\n
+        • &lt;b&gt;How it Works:&lt;/b&gt; When you provide a link, the app tries to find a direct path to the file. If successful, it uses that path. If not, it will use your original link.\n\n
+        • &lt;b&gt;Troubleshooting:&lt;/b&gt;\n
+            - If a direct link attempt fails or the download doesn\'t start, try using the original link with your regular browser or download method.\n
+            - Ensure your app is up-to-date.\n\n
+        • &lt;b&gt;Not a Search Tool:&lt;/b&gt; This feature is for use with URLs you provide. The app does not search for files.\n\n
+        • &lt;b&gt;Feedback:&lt;/b&gt; If you encounter issues with specific links, please report them. This helps us improve the feature. (See app settings or contact support for how to provide feedback).
+    </string>
 </resources>

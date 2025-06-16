@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Base64;
+import android.util.Log; // Added
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
@@ -19,6 +20,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.color.DynamicColors; // Added
 import com.google.android.material.textfield.TextInputEditText; // For direct use if preferred
 
+import com.winlator.Download.service.linkextractor.DirectLinkService; // Added
+
 public class LinkCryptorActivity extends AppCompatActivity {
 
     private TextInputEditText etInputLink;
@@ -29,11 +32,15 @@ public class LinkCryptorActivity extends AppCompatActivity {
     private Button btnShareResult;
     private Button btnCopyResult;
 
+    private DirectLinkService directLinkService; // Added
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         DynamicColors.applyToActivityIfAvailable(this); // Added
         setContentView(R.layout.activity_link_cryptor);
+
+        directLinkService = new DirectLinkService(); // Added
 
         ActionBar actionBar = getSupportActionBar();
         if (actionBar != null) {
@@ -103,15 +110,56 @@ public class LinkCryptorActivity extends AppCompatActivity {
         }
         try {
             byte[] decodedBytes = Base64.decode(base64Link, Base64.DEFAULT);
-            String decodedString = new String(decodedBytes, "UTF-8");
-            tvResultLink.setText(decodedString);
-            etInputLink.setText(decodedString); // Also populate the other field
+            String originalUrl = new String(decodedBytes, "UTF-8");
+
+            String extractedUrl = null;
+            if (directLinkService != null) { // Ensure it's initialized
+                // Check if originalUrl is a valid HTTP/HTTPS URL before trying to extract
+                if (originalUrl.toLowerCase().startsWith("http://") || originalUrl.toLowerCase().startsWith("https://")) {
+                    try {
+                        extractedUrl = directLinkService.getDirectLink(originalUrl);
+                    } catch (Exception e) {
+                        Log.e("LinkCryptorActivity", "Error getting direct link", e);
+                        // extractedUrl will remain null
+                    }
+                } else {
+                    Log.i("LinkCryptorActivity", "Decrypted content is not a URL, skipping direct link extraction: " + originalUrl);
+                }
+            }
+
+            final String finalUrlToUse;
+            String userMessage = null;
+
+            if (extractedUrl != null && !extractedUrl.equals(originalUrl)) {
+                Log.i("LinkCryptorActivity", "Using direct link: " + extractedUrl + " (original: " + originalUrl + ")");
+                finalUrlToUse = extractedUrl;
+                Toast.makeText(this, "Direct link found and used.", Toast.LENGTH_SHORT).show();
+            } else if (extractedUrl == null && (originalUrl.toLowerCase().startsWith("http://") || originalUrl.toLowerCase().startsWith("https://"))) {
+                // This means an extractor (placeholder or failed actual) explicitly returned null for a valid URL
+                Log.w("LinkCryptorActivity", "Could not extract direct link for: " + originalUrl + ". Falling back to decrypted link.");
+                // userMessage = "Could not get a direct download link. Displaying the decrypted link."; // Optional message
+                finalUrlToUse = originalUrl; // Fallback to original decrypted URL
+            } else { // extractedUrl is originalUrl, or not a URL, or service error
+                Log.i("LinkCryptorActivity", "No specific extractor for: " + originalUrl + " or not a URL. Using decrypted content.");
+                finalUrlToUse = originalUrl;
+            }
+
+            // Optional: Display userMessage if it was set
+            // if (userMessage != null && !userMessage.isEmpty()) {
+            //     Toast.makeText(this, userMessage, Toast.LENGTH_LONG).show();
+            // }
+
+            tvResultLink.setText(finalUrlToUse);
+            etInputLink.setText(finalUrlToUse); // Also populate the other field
+
         } catch (IllegalArgumentException e) {
             Toast.makeText(this, "Entrada Base64 inválida.", Toast.LENGTH_SHORT).show();
             tvResultLink.setText("");
+            etInputLink.setText("");
         } catch (java.io.UnsupportedEncodingException e) {
             Toast.makeText(this, "Erro de decodificação.", Toast.LENGTH_SHORT).show();
             tvResultLink.setText("");
+            etInputLink.setText("");
         }
     }
 

@@ -98,6 +98,18 @@
             android:text="Ferramenta Link Cryptor"/>
             <!-- Shorter text -->
 
+        <TextView
+            android:id="@+id/textViewDirectDownloadDisclaimer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/direct_download_disclaimer_title"
+            android:padding="16dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:textAppearance="?android:attr/textAppearanceMedium"
+            android:layout_marginTop="16dp"/>
+
     </LinearLayout>
 
 </ScrollView>
