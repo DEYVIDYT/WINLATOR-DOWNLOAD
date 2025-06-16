@@ -81,6 +81,10 @@ public class DownloadService extends Service {
     public static final String ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD = "com.winlator.Download.action.RESOLVE_GOOGLE_DRIVE_DOWNLOAD";
     public static final String EXTRA_GOOGLE_DRIVE_URL = "com.winlator.Download.extra.GOOGLE_DRIVE_URL";
 
+    // Pixeldrain specific actions and extras
+    public static final String ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD = "com.winlator.Download.action.RESOLVE_PIXELDRAIN_DOWNLOAD";
+    public static final String EXTRA_PIXELDRAIN_URL = "com.winlator.Download.extra.PIXELDRAIN_URL";
+
     // SharedPreferences keys are now in AppSettings.java
 
     // Broadcast actions
@@ -175,8 +179,10 @@ public class DownloadService extends Service {
                  action = ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD;
             } else if (intent.hasExtra(EXTRA_MEDIAFIRE_URL)) {
                  action = ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD;
-            } else if (intent.hasExtra(EXTRA_GOOGLE_DRIVE_URL)) { // Added check for Google Drive URL
+            } else if (intent.hasExtra(EXTRA_GOOGLE_DRIVE_URL)) {
                  action = ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD;
+            } else if (intent.hasExtra(EXTRA_PIXELDRAIN_URL)) { // Added check for Pixeldrain URL
+                 action = ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD;
             } else if (intent.hasExtra(EXTRA_URL)) {
                  action = ACTION_START_DOWNLOAD;
             } else {
@@ -228,6 +234,18 @@ public class DownloadService extends Service {
                     executor.execute(() -> handleResolveGoogleDriveUrl(googleDriveUrl));
                 } else {
                     Log.e(TAG, "Google Drive URL is missing for RESOLVE action.");
+                }
+                break;
+            case ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD:
+                String pixeldrainUrl = intent.getStringExtra(EXTRA_PIXELDRAIN_URL);
+                Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD for URL: " + pixeldrainUrl);
+                if (pixeldrainUrl != null && !pixeldrainUrl.isEmpty()) {
+                    if (executor == null || executor.isShutdown()) {
+                        executor = Executors.newSingleThreadExecutor();
+                    }
+                    executor.execute(() -> handleResolvePixeldrainUrl(pixeldrainUrl));
+                } else {
+                    Log.e(TAG, "Pixeldrain URL is missing for RESOLVE action.");
                 }
                 break;
             // ... (other existing cases: PAUSE, RESUME, CANCEL, RETRY, default) ...
@@ -371,6 +389,41 @@ public class DownloadService extends Service {
                 .setAutoCancel(true);
             if (notificationManager != null) {
                  notificationManager.notify((int) (System.currentTimeMillis() % 10000) + 2, builder.build()); // Use different ID
+            }
+        }
+    }
+
+    private void handleResolvePixeldrainUrl(String pageUrl) {
+        Log.i(TAG, "handleResolvePixeldrainUrl: Starting resolution for " + pageUrl);
+        PixeldrainLinkResolver resolver = new PixeldrainLinkResolver();
+        DownloadItem resolvedItem = resolver.resolvePixeldrainUrl(pageUrl);
+
+        if (resolvedItem != null && resolvedItem.directUrl != null && !resolvedItem.directUrl.isEmpty()) {
+            Log.i(TAG, "Pixeldrain resolution successful. Filename: " + resolvedItem.fileName + ", URL: " + resolvedItem.directUrl + ", Size: " + resolvedItem.size);
+
+            Intent downloadIntent = new Intent(this, DownloadService.class);
+            downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
+            downloadIntent.putExtra(EXTRA_URL, resolvedItem.directUrl);
+            downloadIntent.putExtra(EXTRA_FILE_NAME, resolvedItem.fileName);
+
+            Log.d(TAG, "Dispatching new download task for resolved Pixeldrain item: " + resolvedItem.fileName);
+            mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
+
+        } else {
+            Log.e(TAG, "Pixeldrain resolution failed or no items found for " + pageUrl);
+            final String userMessage = "Falha ao resolver link Pixeldrain: "
+                                     + (pageUrl != null && pageUrl.lastIndexOf('/') != -1 && pageUrl.lastIndexOf('/') < pageUrl.length() -1
+                                        ? pageUrl.substring(pageUrl.lastIndexOf('/') + 1)
+                                        : "Desconhecido");
+            mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_cancel)
+                .setContentTitle("Erro no Link Pixeldrain")
+                .setContentText("Não foi possível resolver o link Pixeldrain.")
+                .setAutoCancel(true);
+            if (notificationManager != null) {
+                 notificationManager.notify((int) (System.currentTimeMillis() % 10000) + 3, builder.build());
             }
         }
     }

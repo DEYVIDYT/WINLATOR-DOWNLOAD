@@ -103,15 +103,35 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
                     serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD);
                     serviceIntent.putExtra(DownloadService.EXTRA_GOOGLE_DRIVE_URL, gameUrl);
                     serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
+                } else if (gameUrl.contains("pixeldrain.com/u/") || gameUrl.contains("pixeldrain.com/l/")) {
+                    Log.d("CommunityGamesAdapter", "Pixeldrain URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
+                    serviceIntent.setAction(DownloadService.ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD); // setAction instead of putExtra for action
+                    serviceIntent.putExtra(DownloadService.EXTRA_PIXELDRAIN_URL, gameUrl);
+                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
                 } else {
                     Log.d("CommunityGamesAdapter", "Standard URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
-                    serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_START_DOWNLOAD);
+                    serviceIntent.setAction(DownloadService.ACTION_START_DOWNLOAD); // setAction instead of putExtra for action
                     serviceIntent.putExtra(DownloadService.EXTRA_URL, gameUrl);
                     serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
                 }
+                // Common code for starting service and showing toast can be outside the if/else if chain if serviceIntent is always initialized.
+                // However, the toast message might need to be specific. For now, keeping it simple.
 
-                itemContext.startService(serviceIntent);
-                Toast.makeText(itemContext, "Download iniciado: " + gameName, Toast.LENGTH_SHORT).show();
+                // Check if serviceIntent action is set before starting
+                if (serviceIntent.getAction() != null) {
+                    itemContext.startService(serviceIntent);
+                    // Make toast message more specific if desired, or keep generic
+                    String toastMessage = "Download iniciado: " + gameName;
+                    if (DownloadService.ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD.equals(serviceIntent.getAction())) {
+                        toastMessage = "Iniciando download do Pixeldrain: " + gameName;
+                    }
+                    Toast.makeText(itemContext, toastMessage, Toast.LENGTH_SHORT).show();
+                } else {
+                    // This case should ideally not be reached if all URL types are handled or have a default
+                    Log.e("CommunityGamesAdapter", "No action set for serviceIntent. URL: " + gameUrl);
+                    Toast.makeText(itemContext, "Não foi possível iniciar o download: tipo de URL não suportado.", Toast.LENGTH_LONG).show();
+                }
+
 
                 // Optionally, still navigate to DownloadManagerActivity
                 Intent activityIntent = new Intent(itemContext, DownloadManagerActivity.class);
