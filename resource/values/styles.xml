@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Style definitions will be added here -->
+
+    <!-- Widget Styles -->
+    <style name="Widget.App.Button" parent="Widget.MaterialComponents.Button">
+        <!-- Add any app-specific button attributes here if needed -->
+        <!-- For now, just inheriting is enough to resolve the error -->
+    </style>
+
+    <style name="Widget.App.TextInputLayout" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        <!-- Or parent="Widget.MaterialComponents.TextInputLayout.FilledBox" if that's the app's common style -->
+        <!-- Add any app-specific TextInputLayout attributes here if needed -->
+    </style>
+
+    <!-- ThemeOverlay Styles -->
+    <style name="ThemeOverlay.App.MaterialAlertDialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <!-- Add any app-specific AlertDialog theme attributes here if needed -->
+    </style>
+</resources>

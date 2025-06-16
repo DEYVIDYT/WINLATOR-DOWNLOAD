@@ -36,5 +36,38 @@
     
     <!-- Cores transparentes para barras de sistema -->
     <color name="transparent">#00000000</color>
+
+    <!-- md_theme_dark_primary -->
+    <color name="md_theme_dark_primary">#FFADC6FF</color>
+    <!-- md_theme_dark_error -->
+    <color name="md_theme_dark_error">#FFFFB4AB</color>
+    <!-- md_theme_dark_onError -->
+    <color name="md_theme_dark_onError">#FF690005</color>
+    <!-- md_theme_dark_errorContainer -->
+    <color name="md_theme_dark_errorContainer">#FF93000A</color>
+    <!-- md_theme_dark_onErrorContainer -->
+    <color name="md_theme_dark_onErrorContainer">#FFFFDAD6</color>
+    <!-- md_theme_dark_background -->
+    <color name="md_theme_dark_background">#FF1A1C1E</color>
+    <!-- md_theme_dark_onBackground -->
+    <color name="md_theme_dark_onBackground">#FFE2E2E6</color>
+    <!-- md_theme_dark_surface -->
+    <color name="md_theme_dark_surface">#FF1A1C1E</color>
+    <!-- md_theme_dark_onSurface -->
+    <color name="md_theme_dark_onSurface">#FFE2E2E6</color>
+    <!-- md_theme_dark_surfaceVariant -->
+    <color name="md_theme_dark_surfaceVariant">#FF42474E</color>
+    <!-- md_theme_dark_onSurfaceVariant -->
+    <color name="md_theme_dark_onSurfaceVariant">#FFC2C7CF</color>
+    <!-- md_theme_dark_outline -->
+    <color name="md_theme_dark_outline">#FF8C9199</color>
+    <!-- md_theme_dark_inverseSurface -->
+    <color name="md_theme_dark_inverseSurface">#FFE2E2E6</color>
+    <!-- md_theme_dark_inverseOnSurface -->
+    <color name="md_theme_dark_inverseOnSurface">#FF2F3033</color>
+    <!-- md_theme_dark_inversePrimary -->
+    <color name="md_theme_dark_inversePrimary">#FF005AC1</color>
+    <!-- md_theme_dark_surfaceTint -->
+    <color name="md_theme_dark_surfaceTint">#FFADC6FF</color>
 </resources>
 
