@@ -1503,7 +1503,7 @@ public class DownloadService extends Service {
                         // For now, if not paused/cancelled, and segments fail, parts are kept.
                     }
                     return null;
-                }
+                } // <<< MISSING BRACE WAS HERE for the `else` related to `!allSegmentsSuccess`
             } else { // Fallback to single-threaded download
                  if (this.multithreadEnabled && this.threadsCount > 1) {
                     Log.w(TAG, "Falling back to single-threaded download for " + this.displayFileName + " (HEAD failed, no range support/size, or localPath null)."); // Error 18-23: displayFileName
