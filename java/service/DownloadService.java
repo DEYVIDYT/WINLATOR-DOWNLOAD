@@ -65,6 +65,12 @@ public class DownloadService extends Service {
     public static final String ACTION_CANCEL_DOWNLOAD = "com.winlator.Download.action.CANCEL_DOWNLOAD";
     public static final String ACTION_RETRY_DOWNLOAD = "com.winlator.Download.action.RETRY_DOWNLOAD";
 
+    // Gofile specific actions and extras
+    public static final String ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD = "com.winlator.Download.action.RESOLVE_AND_START_GOFILE_DOWNLOAD";
+    public static final String EXTRA_GOFILE_URL = "com.winlator.Download.extra.GOFILE_URL";
+    public static final String EXTRA_GOFILE_PASSWORD = "com.winlator.Download.extra.GOFILE_PASSWORD"; // Optional
+    public static final String EXTRA_AUTH_TOKEN = "com.winlator.Download.extra.AUTH_TOKEN";
+
     // Broadcast actions
     public static final String ACTION_DOWNLOAD_PROGRESS = "com.winlator.Download.action.DOWNLOAD_PROGRESS";
     public static final String ACTION_DOWNLOAD_STATUS_CHANGED = "com.winlator.Download.action.DOWNLOAD_STATUS_CHANGED";
@@ -78,6 +84,7 @@ public class DownloadService extends Service {
     private final IBinder binder = new DownloadBinder();
     private LocalBroadcastManager broadcastManager;
     private ExecutorService executor;
+    private Handler mainThreadHandler;
     
     // Mapa para armazenar as tarefas de download ativas
     private final Map<Long, DownloadTask> activeDownloads = new ConcurrentHashMap<>();
@@ -99,6 +106,7 @@ public class DownloadService extends Service {
             broadcastManager = LocalBroadcastManager.getInstance(this);
             createNotificationChannel();
             executor = Executors.newSingleThreadExecutor(); // Initialize executor
+            mainThreadHandler = new Handler(Looper.getMainLooper());
             // Verificar e corrigir status de downloads ao iniciar o serviço
             verifyAndCorrectDownloadStatuses();
         } catch (Throwable t) {
@@ -147,12 +155,33 @@ public class DownloadService extends Service {
 
         String action = intent.getStringExtra(EXTRA_ACTION);
         if (action == null) {
-            action = ACTION_START_DOWNLOAD; // Ação padrão
+            // Check if it's a Gofile URL to default to resolve action
+            if (intent.hasExtra(EXTRA_GOFILE_URL)) {
+                 action = ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD;
+            } else {
+                 action = ACTION_START_DOWNLOAD; // Default action if no specific action provided
+            }
         }
+        Log.d(TAG, "onStartCommand: Effective action: " + action);
+
 
         switch (action) {
             case ACTION_START_DOWNLOAD:
                 handleStartDownload(intent);
+                break;
+            case ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD:
+                String gofileUrl = intent.getStringExtra(EXTRA_GOFILE_URL);
+                String gofilePassword = intent.getStringExtra(EXTRA_GOFILE_PASSWORD); // Will be null if not set
+                Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD for URL: " + gofileUrl);
+                if (gofileUrl != null && !gofileUrl.isEmpty()) {
+                    if (executor == null || executor.isShutdown()) {
+                         executor = Executors.newSingleThreadExecutor(); // Ensure executor is alive
+                    }
+                    executor.execute(() -> handleResolveGofileUrl(gofileUrl, gofilePassword));
+                } else {
+                    Log.e(TAG, "Gofile URL is missing for RESOLVE action.");
+                    // Potentially stop service if this was the only command
+                }
                 break;
             case ACTION_PAUSE_DOWNLOAD:
                 handlePauseDownload(intent);
@@ -167,7 +196,7 @@ public class DownloadService extends Service {
                 handleRetryDownload(intent);
                 break;
             default:
-                Log.w(TAG, "onStartCommand: Received unknown action: " + action);
+                Log.w(TAG, "onStartCommand: Received unknown or unhandled action: " + action);
                 Notification unknownActionNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_cancel)
                     .setContentTitle("Download Service")
@@ -180,6 +209,41 @@ public class DownloadService extends Service {
         }
 
         return START_STICKY;
+    }
+
+    private void handleResolveGofileUrl(String gofileUrl, String password) {
+        Log.i(TAG, "handleResolveGofileUrl: Starting resolution for " + gofileUrl);
+        GofileLinkResolver resolver = new GofileLinkResolver(); // Uses default GofileApiHandler
+        GofileResolvedResult resolvedResult = resolver.resolveGofileUrl(gofileUrl, password);
+
+        if (resolvedResult != null && resolvedResult.hasItems()) {
+            Log.i(TAG, "Gofile resolution successful. Found " + resolvedResult.getItems().size() + " items. Token: " + resolvedResult.getAuthToken());
+            for (DownloadItem item : resolvedResult.getItems()) {
+                Intent downloadIntent = new Intent(this, DownloadService.class);
+                downloadIntent.putExtra(EXTRA_ACTION, ACTION_START_DOWNLOAD);
+                downloadIntent.putExtra(EXTRA_URL, item.directUrl);
+                downloadIntent.putExtra(EXTRA_FILE_NAME, item.fileName);
+                // IMPORTANT: Pass the auth token obtained during resolution
+                downloadIntent.putExtra(EXTRA_AUTH_TOKEN, resolvedResult.getAuthToken());
+
+                Log.d(TAG, "Dispatching new download task for resolved Gofile item: " + item.fileName + " with token.");
+                mainThreadHandler.post(() -> handleStartDownload(downloadIntent));
+            }
+        } else {
+            Log.e(TAG, "Gofile resolution failed or no items found for " + gofileUrl);
+            final String userMessage = "Failed to resolve Gofile link: " + (gofileUrl != null ? gofileUrl.substring(gofileUrl.lastIndexOf('/') + 1) : "Unknown");
+            mainThreadHandler.post(() -> Toast.makeText(DownloadService.this, userMessage, Toast.LENGTH_LONG).show());
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_cancel) // Ensure ic_cancel exists
+                .setContentTitle("Gofile Link Error")
+                .setContentText("Could not resolve files from Gofile link.")
+                .setAutoCancel(true);
+            // Use a unique ID for this specific error notification
+            notificationManager.notify((int) (System.currentTimeMillis() % 10000), builder.build());
+        }
+        // After attempting to resolve and queue, check if the service should stop.
+        checkStopForeground();
     }
     
     // Método para verificar e corrigir status de downloads fantasmas
@@ -226,6 +290,10 @@ public class DownloadService extends Service {
         Log.d(TAG, "handleStartDownload: FileName from intent: '" + intent.getStringExtra(EXTRA_FILE_NAME) + "'");
         String urlString = intent.getStringExtra(EXTRA_URL);
         String fileName = intent.getStringExtra(EXTRA_FILE_NAME);
+        // Retrieve the auth token. It might be null if not a Gofile download.
+        final String authToken = intent.getStringExtra(EXTRA_AUTH_TOKEN);
+        Log.d(TAG, "handleStartDownload: AuthToken from intent: " + (authToken != null ? "present" : "null"));
+
         final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1; // Unique ID for preparing/error notification
 
         if (urlString == null || urlString.trim().isEmpty() || fileName == null || fileName.trim().isEmpty()) {
@@ -268,13 +336,16 @@ public class DownloadService extends Service {
         Notification preparingNotification = createPreparingNotification(fileName);
         startForeground(PREPARING_NOTIFICATION_ID, preparingNotification);
 
-        if (executor == null) {
-            Log.w(TAG, "Executor was null in handleStartDownload, re-initializing.");
+        if (executor == null || executor.isShutdown()) { // Ensure executor is alive
+            Log.w(TAG, "Executor was null/shutdown in handleStartDownload, re-initializing.");
             executor = Executors.newSingleThreadExecutor();
         }
 
+        // Capture authToken for use in the lambda
+        final String effectiveAuthToken = authToken;
+
         executor.execute(() -> {
-            Log.d(TAG, "handleStartDownload (Executor): Background processing started for URL: '" + urlString + "', FileName: '" + fileName + "'");
+            Log.d(TAG, "handleStartDownload (Executor): Background processing started for URL: '" + urlString + "', FileName: '" + fileName + "' AuthToken: " + (effectiveAuthToken != null ? "present" : "null"));
             // Check if a download task for this URL is already in activeDownloads
             for (DownloadTask existingTask : activeDownloads.values()) {
                 if (existingTask.urlString.equals(urlString)) {
@@ -306,11 +377,11 @@ public class DownloadService extends Service {
                             Toast.makeText(DownloadService.this, "Este arquivo já foi baixado", Toast.LENGTH_SHORT).show();
                         } else if (existingDownload.getStatus() == Download.STATUS_PAUSED || existingDownload.getStatus() == Download.STATUS_FAILED) {
                             Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for existing paused/failed download. ID: " + existingDownload.getId() + ", URL: '" + existingDownload.getUrl() + "', FileName: '" + existingDownload.getFileName() + "'");
-                            startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName());
+                            startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName(), effectiveAuthToken);
                         } else if (existingDownload.getStatus() == Download.STATUS_DOWNLOADING) {
                             Log.w(TAG, "DB indicates downloading, but no active task found for " + existingDownload.getFileName() + ". Attempting to restart.");
                             Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for existing downloading (but no task) download. ID: " + existingDownload.getId() + ", URL: '" + existingDownload.getUrl() + "', FileName: '" + existingDownload.getFileName() + "'");
-                            startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName());
+                            startDownload(existingDownload.getId(), existingDownload.getUrl(), existingDownload.getFileName(), effectiveAuthToken);
                         }
                     } else {
                         // DB had an ID, but we couldn't fetch the Download object. This is an inconsistent state.
@@ -319,7 +390,7 @@ public class DownloadService extends Service {
                         Log.d(TAG, "handleStartDownload (Executor): Existing download object was null for ID " + downloadId + ". Attempted insert, new ID: " + newDownloadIdAfterNull);
                         if (newDownloadIdAfterNull != -1) {
                             Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for new download (after null existing). ID: " + newDownloadIdAfterNull + ", URL: '" + urlString + "', FileName: '" + fileName + "'");
-                            startDownload(newDownloadIdAfterNull, urlString, fileName);
+                            startDownload(newDownloadIdAfterNull, urlString, fileName, effectiveAuthToken);
                         } else {
                             Log.e(TAG, "Failed to insert new download record for: " + urlString);
                             Toast.makeText(DownloadService.this, "Erro ao iniciar download.", Toast.LENGTH_SHORT).show();
@@ -340,7 +411,7 @@ public class DownloadService extends Service {
                 }
                 if (newDownloadId != -1) {
                     Log.i(TAG, "handleStartDownload (MainThread): About to call startDownload for brand new download. ID: " + newDownloadId + ", URL: '" + urlString + "', FileName: '" + fileName + "'");
-                    startDownload(newDownloadId, urlString, fileName);
+                    startDownload(newDownloadId, urlString, fileName, effectiveAuthToken);
                 } else {
                     Log.e(TAG, "Failed to insert new download record for: " + urlString);
                     Toast.makeText(DownloadService.this, "Erro ao iniciar download.", Toast.LENGTH_SHORT).show();
@@ -389,7 +460,8 @@ public class DownloadService extends Service {
              return;
         }
         if (download != null && (download.getStatus() == Download.STATUS_PAUSED || download.getStatus() == Download.STATUS_FAILED)) {
-            startDownload(downloadId, download.getUrl(), download.getFileName());
+            // For now, resume will not have the Gofile token unless we store it in DB.
+            startDownload(downloadId, download.getUrl(), download.getFileName(), null);
         }
     }
 
@@ -462,12 +534,14 @@ public class DownloadService extends Service {
             );
             
             // Iniciar o download novamente
-            startDownload(downloadId, download.getUrl(), download.getFileName());
+            // Retry will also not use a token unless persisted.
+            startDownload(downloadId, download.getUrl(), download.getFileName(), null);
         }
     }
 
-    private void startDownload(long downloadId, String urlString, String fileName) {
-        Log.i(TAG, "startDownload: Entry. ID: " + downloadId + ", URL: '" + urlString + "', FileName: '" + fileName + "'");
+    // Modified startDownload signature to include authToken
+    private void startDownload(long downloadId, String urlString, String fileName, String authToken) {
+        Log.i(TAG, "startDownload: Entry. ID: " + downloadId + ", URL: '" + urlString + "', FileName: '" + fileName + "', AuthToken: " + (authToken != null ? "present" : "null"));
         // Criar ou atualizar a notificação
         NotificationCompat.Builder builder = createOrUpdateNotificationBuilder(downloadId, fileName);
         activeNotifications.put(downloadId, builder);
@@ -478,8 +552,8 @@ public class DownloadService extends Service {
         // Atualizar o status no banco de dados
         updateDownloadStatus(downloadId, Download.STATUS_DOWNLOADING);
         
-        // Iniciar a tarefa de download
-        DownloadTask task = new DownloadTask(downloadId, urlString, fileName, builder);
+        // Iniciar a tarefa de download, passing the authToken
+        DownloadTask task = new DownloadTask(downloadId, urlString, fileName, builder, authToken);
         activeDownloads.put(downloadId, task);
         Log.i(TAG, "startDownload: About to execute DownloadTask for ID: " + downloadId);
         task.execute();
@@ -488,6 +562,11 @@ public class DownloadService extends Service {
         Intent broadcastIntent = new Intent(ACTION_DOWNLOAD_STATUS_CHANGED);
         broadcastIntent.putExtra(EXTRA_DOWNLOAD_ID, downloadId);
         broadcastManager.sendBroadcast(broadcastIntent);
+    }
+
+    // Overload for existing calls that don't have authToken (e.g., resume of non-Gofile)
+    private void startDownload(long downloadId, String urlString, String fileName) {
+        startDownload(downloadId, urlString, fileName, null);
     }
 
     private NotificationCompat.Builder createOrUpdateNotificationBuilder(long downloadId, String fileName) {
@@ -744,12 +823,20 @@ public class DownloadService extends Service {
         private long startTime;
         private long lastUpdateTime = 0;
         private double speed = 0;
+        private final String authToken; // Added field for Gofile token
 
-        DownloadTask(long downloadId, String urlString, String fileName, NotificationCompat.Builder builder) {
+        // Modified constructor
+        DownloadTask(long downloadId, String urlString, String fileName, NotificationCompat.Builder builder, String authToken) {
             this.downloadId = downloadId;
             this.urlString = urlString;
             this.fileName = fileName;
             this.notificationBuilder = builder;
+            this.authToken = authToken; // Store the token
+        }
+
+        // Overload constructor for existing calls that don't have authToken
+        DownloadTask(long downloadId, String urlString, String fileName, NotificationCompat.Builder builder) {
+            this(downloadId, urlString, fileName, builder, null);
         }
 
         public void pause() {
@@ -779,7 +866,7 @@ public class DownloadService extends Service {
             RandomAccessFile randomAccessFile = null;
 
             try {
-                Log.d(TAG, "DownloadTask (" + this.downloadId + "): doInBackground starting. URL: '" + this.urlString + "'");
+                Log.d(TAG, "DownloadTask (" + this.downloadId + "): doInBackground starting. URL: '" + this.urlString + "'. AuthToken: " + (this.authToken != null ? "present" : "null"));
                 // Preparar o diretório de download
                 File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                 if (!downloadDir.exists()) {
@@ -792,6 +879,12 @@ public class DownloadService extends Service {
                 // Configurar a conexão
                 URL url = new URL(urlString);
                 connection = (HttpURLConnection) url.openConnection();
+
+                // Add Cookie header if authToken is present (for Gofile direct links)
+                if (this.authToken != null && !this.authToken.isEmpty()) {
+                    connection.setRequestProperty("Cookie", "accountToken=" + this.authToken);
+                    Log.d(TAG, "DownloadTask (" + this.downloadId + "): Added auth token to Cookie header.");
+                }
                 
                 // Se já temos bytes baixados, configurar o cabeçalho Range
                 if (downloadedBytes > 0) {
@@ -800,7 +893,7 @@ public class DownloadService extends Service {
                 
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(15000);
-                connection.connect();
+                connection.connect(); // Connect AFTER setting all properties
                 
                 int responseCode = connection.getResponseCode();
                 // Tratar resposta parcial (206) ou OK (200)

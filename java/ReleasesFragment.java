@@ -2,7 +2,7 @@ package com.winlator.Download;
 
 import android.content.Context;
 import android.content.Intent;
-import android.os.AsyncTask;
+// Removed AsyncTask as it's not used directly in this fragment after changes
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -20,41 +20,32 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.winlator.Download.adapter.ReleasesAdapter;
 import com.winlator.Download.model.Release;
-import com.winlator.Download.service.DownloadService;
+import com.winlator.Download.service.DownloadService; // Keep this
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
+// Removed unused JSON and other specific imports if not needed after changes
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+// Removed Map, LinkedHashMap, Pattern, Matcher if they are not used directly in this class after changes
 
 public class ReleasesFragment extends Fragment implements ReleasesAdapter.OnReleaseClickListener {
 
     private static final String TAG = "ReleasesFragment";
     private static final String ARG_CATEGORY = "category";
-    private static final String ARG_RELEASES_LIST = "releases_list"; // Alterado para lista de Releases
+    private static final String ARG_RELEASES_LIST = "releases_list";
 
     private RecyclerView recyclerView;
     private ProgressBar progressBar;
     private TextView errorTextView;
     private ReleasesAdapter adapter;
-    private Context mContext;
+    private Context mContext; // Keep mContext
     private String category;
-    private List<Release> releasesList; // Alterado para List<Release>
+    private List<Release> releasesList;
 
-    public static ReleasesFragment newInstance(String category, List<Release> releases) { // Alterado para List<Release>
+    public static ReleasesFragment newInstance(String category, List<Release> releases) {
         ReleasesFragment fragment = new ReleasesFragment();
         Bundle args = new Bundle();
         args.putString(ARG_CATEGORY, category);
-        args.putSerializable(ARG_RELEASES_LIST, new ArrayList<>(releases)); // Passa a lista de Releases
+        args.putSerializable(ARG_RELEASES_LIST, new ArrayList<>(releases));
         fragment.setArguments(args);
         return fragment;
     }
@@ -70,7 +61,7 @@ public class ReleasesFragment extends Fragment implements ReleasesAdapter.OnRele
         super.onCreate(savedInstanceState);
         if (getArguments() != null) {
             category = getArguments().getString(ARG_CATEGORY);
-            releasesList = (List<Release>) getArguments().getSerializable(ARG_RELEASES_LIST); // Obtém a lista de Releases
+            releasesList = (List<Release>) getArguments().getSerializable(ARG_RELEASES_LIST);
         }
     }
 
@@ -84,21 +75,30 @@ public class ReleasesFragment extends Fragment implements ReleasesAdapter.OnRele
         errorTextView = view.findViewById(R.id.errorTextView);
 
         recyclerView.setLayoutManager(new LinearLayoutManager(mContext));
-        adapter = new ReleasesAdapter(mContext, this);
-        recyclerView.setAdapter(adapter);
+        // Ensure mContext is available for Adapter
+        if (mContext != null) {
+            adapter = new ReleasesAdapter(mContext, this);
+            recyclerView.setAdapter(adapter);
+        } else {
+            Log.e(TAG, "mContext is null in onCreateView, cannot initialize adapter.");
+            // Handle this case, perhaps show error or delay adapter initialization
+        }
+
 
         if (getActivity() != null) {
             getActivity().setTitle(category);
         }
 
-        displayReleases(); // Chama um novo método para exibir os releases já carregados
+        displayReleases();
 
         return view;
     }
 
     private void displayReleases() {
         if (releasesList != null && !releasesList.isEmpty()) {
-            adapter.updateData(releasesList);
+            if (adapter != null) { // Check if adapter is initialized
+                 adapter.updateData(releasesList);
+            }
             if (recyclerView != null) {
                 recyclerView.setVisibility(View.VISIBLE);
             }
@@ -129,16 +129,44 @@ public class ReleasesFragment extends Fragment implements ReleasesAdapter.OnRele
 
     @Override
     public void onReleaseDownloadClick(Release release) {
-        if (release.getDownloadUrl() != null && !release.getDownloadUrl().isEmpty()) {
-            Toast.makeText(mContext, "Iniciando download: " + release.getAssetName(), Toast.LENGTH_SHORT).show();
+        if (mContext == null) {
+            Log.e(TAG, "Context is null in onReleaseDownloadClick. Cannot start download.");
+            Toast.makeText(getActivity(), "Error: Context not available.", Toast.LENGTH_SHORT).show(); // Use getActivity() if mContext might be null
+            return;
+        }
+
+        String downloadUrl = release.getDownloadUrl();
+        String assetName = release.getAssetName();
+
+        if (downloadUrl != null && !downloadUrl.isEmpty()) {
+            Toast.makeText(mContext, "Iniciando download: " + assetName, Toast.LENGTH_SHORT).show();
             
             Intent serviceIntent = new Intent(mContext, DownloadService.class);
-            serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_START_DOWNLOAD);
-            serviceIntent.putExtra(DownloadService.EXTRA_URL, release.getDownloadUrl());
-            serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, release.getAssetName());
+
+            // Check if it's a Gofile URL
+            // Basic check, can be improved with regex if needed for more robustness
+            if (downloadUrl.contains("gofile.io/d/") || downloadUrl.contains("gofile.io/download/")) {
+                Log.d(TAG, "Gofile URL detected: " + downloadUrl);
+                serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD);
+                serviceIntent.putExtra(DownloadService.EXTRA_GOFILE_URL, downloadUrl);
+                // For Gofile, EXTRA_FILE_NAME is more of a placeholder initially, actual names come from API
+                // Using assetName is fine as a reference.
+                serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, assetName);
+                // Password handling for Gofile links is not part of Release model yet.
+                // serviceIntent.putExtra(DownloadService.EXTRA_GOFILE_PASSWORD, "some_password_if_available");
+            } else {
+                Log.d(TAG, "Standard URL detected: " + downloadUrl);
+                serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_START_DOWNLOAD);
+                serviceIntent.putExtra(DownloadService.EXTRA_URL, downloadUrl);
+                serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, assetName);
+            }
+
             mContext.startService(serviceIntent);
             
+            // Navigate to DownloadManagerActivity
             Intent activityIntent = new Intent(mContext, DownloadManagerActivity.class);
+            // Optional: Add flags if DownloadManagerActivity should be a single top, etc.
+            // activityIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
             startActivity(activityIntent);
         } else {
             Toast.makeText(mContext, "URL de download inválida", Toast.LENGTH_SHORT).show();
@@ -150,17 +178,19 @@ public class ReleasesFragment extends Fragment implements ReleasesAdapter.OnRele
         if (mContext != null) {
             Intent intent = new Intent(mContext, VersionsActivity.class);
             intent.putExtra(VersionsActivity.EXTRA_RELEASE, release);
-            // Passar informações específicas do repositório para filtrar os releases
             intent.putExtra(VersionsActivity.EXTRA_REPOSITORY_NAME, release.getName());
             intent.putExtra(VersionsActivity.EXTRA_REPOSITORY_URL, release.getHtmlUrl());
-            requireActivity().startActivity(intent);
+            // Consider using requireActivity().startActivity(intent) for null safety if fragment not attached.
+            // However, onAttach ensures mContext is set, so direct use should be okay if lifecycle is managed.
+            startActivity(intent);
+        } else {
+            Log.e(TAG, "mContext is null in onReleaseItemClick. Cannot start VersionsActivity.");
         }
     }
 
     @Override
     public void onDetach() {
         super.onDetach();
-        mContext = null;
+        mContext = null; // Important to nullify context to prevent leaks
     }
 }
-
