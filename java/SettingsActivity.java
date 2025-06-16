@@ -4,6 +4,7 @@ import android.content.Intent;
 // SharedPreferences import removed as it's now encapsulated in AppSettings
 import android.os.Bundle;
 import android.text.InputType;
+import android.util.Log; // Added Log import (Error 25)
 // Button import will be replaced by MaterialButton if not used by other elements
 import android.widget.EditText;
 import android.widget.TextView;
@@ -163,7 +164,7 @@ public class SettingsActivity extends AppCompatActivity {
                 public void onStopTrackingTouch(Slider slider) {
                     int intValue = (int) slider.getValue();
                     tvDownloadThreadsValue.setText(String.valueOf(intValue)); // Ensure text is set on stop
-                    AppSettings.setDownloadThreadsCount(this, intValue); // Placeholder
+                    AppSettings.setDownloadThreadsCount(SettingsActivity.this, intValue); // Corrected context (Error 24)
                     Log.d("SettingsActivity", "Saved thread count: " + intValue);
                 }
             });
