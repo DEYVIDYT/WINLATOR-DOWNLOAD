@@ -2,6 +2,8 @@ package com.winlator.Download.adapter;
 
 import android.content.Context;
 import android.content.Intent;
+// SharedPreferences import removed as it's now encapsulated in AppSettings
+import android.net.Uri;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -19,11 +21,14 @@ import com.winlator.Download.R;
 import com.winlator.Download.model.CommunityGame;
 import com.winlator.Download.service.DownloadService;
 import com.winlator.Download.DownloadManagerActivity;
+import com.winlator.Download.utils.AppSettings; // Added import
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAdapter.ViewHolder> implements Filterable {
+
+    // SharedPreferences keys are now in AppSettings.java
 
     private List<CommunityGame> communityGamesList;
     private List<CommunityGame> communityGamesListFull;
@@ -58,11 +63,31 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
         holder.btnDownload.setOnClickListener(v -> {
             String gameUrl = game.getUrl();
             String gameName = game.getName();
-            Context itemContext = holder.itemView.getContext();
+            Context itemContext = holder.itemView.getContext(); // Use context from holder.itemView
 
-            if (gameUrl != null && !gameUrl.isEmpty()) {
+            if (gameUrl == null || gameUrl.isEmpty()) {
+                Log.w("CommunityGamesAdapter", "Game URL is null or empty for: " + gameName);
+                Toast.makeText(itemContext, "URL de download inválida para: " + gameName, Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // Use AppSettings to get the preference
+            boolean disableDirectDownloads = AppSettings.getDisableDirectDownloads(itemContext);
+
+            if (disableDirectDownloads) {
+                Log.i("CommunityGamesAdapter", "Direct community downloads disabled. Opening URL in browser for: " + gameName);
+                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(gameUrl));
+                try {
+                    itemContext.startActivity(browserIntent);
+                } catch (Exception e) {
+                    Log.e("CommunityGamesAdapter", "Failed to open URL in browser: " + gameUrl, e);
+                    Toast.makeText(itemContext, "Não foi possível abrir o link no navegador.", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Log.i("CommunityGamesAdapter", "Direct community downloads enabled. Starting DownloadService for: " + gameName);
                 Intent serviceIntent = new Intent(itemContext, DownloadService.class);
 
+                // Existing logic to determine action based on URL type
                 if (gameUrl.contains("gofile.io/d/") || gameUrl.contains("gofile.io/download/")) {
                     Log.d("CommunityGamesAdapter", "Gofile URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
                     serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD);
@@ -73,11 +98,11 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
                     serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD);
                     serviceIntent.putExtra(DownloadService.EXTRA_MEDIAFIRE_URL, gameUrl);
                     serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
-                } else if (gameUrl.contains("drive.google.com")) { // Added Google Drive check
+                } else if (gameUrl.contains("drive.google.com")) {
                     Log.d("CommunityGamesAdapter", "Google Drive URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
                     serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD);
                     serviceIntent.putExtra(DownloadService.EXTRA_GOOGLE_DRIVE_URL, gameUrl);
-                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName); // Placeholder
+                    serviceIntent.putExtra(DownloadService.EXTRA_FILE_NAME, gameName);
                 } else {
                     Log.d("CommunityGamesAdapter", "Standard URL detected for game: '" + gameName + "'. URL: '" + gameUrl + "'");
                     serviceIntent.putExtra(DownloadService.EXTRA_ACTION, DownloadService.ACTION_START_DOWNLOAD);
@@ -88,12 +113,9 @@ public class CommunityGamesAdapter extends RecyclerView.Adapter<CommunityGamesAd
                 itemContext.startService(serviceIntent);
                 Toast.makeText(itemContext, "Download iniciado: " + gameName, Toast.LENGTH_SHORT).show();
 
+                // Optionally, still navigate to DownloadManagerActivity
                 Intent activityIntent = new Intent(itemContext, DownloadManagerActivity.class);
                 itemContext.startActivity(activityIntent);
-
-            } else {
-                Log.w("CommunityGamesAdapter", "Game URL is null or empty for: " + gameName);
-                Toast.makeText(itemContext, "URL de download inválida para: " + gameName, Toast.LENGTH_SHORT).show();
             }
         });
     }

@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+// SharedPreferences import removed as it's now encapsulated in AppSettings
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.net.Uri;
@@ -32,6 +33,7 @@ import com.winlator.Download.R;
 import com.winlator.Download.db.DownloadContract;
 import com.winlator.Download.db.SQLiteHelper;
 import com.winlator.Download.model.Download;
+import com.winlator.Download.utils.AppSettings; // Added import
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -78,6 +80,8 @@ public class DownloadService extends Service {
     // Google Drive specific actions and extras
     public static final String ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD = "com.winlator.Download.action.RESOLVE_GOOGLE_DRIVE_DOWNLOAD";
     public static final String EXTRA_GOOGLE_DRIVE_URL = "com.winlator.Download.extra.GOOGLE_DRIVE_URL";
+
+    // SharedPreferences keys are now in AppSettings.java
 
     // Broadcast actions
     public static final String ACTION_DOWNLOAD_PROGRESS = "com.winlator.Download.action.DOWNLOAD_PROGRESS";
@@ -992,12 +996,42 @@ public class DownloadService extends Service {
 
             try {
                 Log.d(TAG, "DownloadTask (" + this.downloadId + "): doInBackground starting. URL: '" + this.urlString + "'. AuthToken: " + (this.authToken != null ? "present" : "null"));
-                // Preparar o diretório de download
-                File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                if (!downloadDir.exists()) {
-                    downloadDir.mkdirs();
+
+                // Determine Download Directory based on SharedPreferences
+                File chosenDir;
+                // Use AppSettings to get the download path
+                String customPath = AppSettings.getDownloadPath(getApplicationContext());
+
+                // Check if the path is the default placeholder or a real custom path
+                if (!customPath.equals(AppSettings.DEFAULT_DOWNLOAD_PATH) && !customPath.isEmpty()) {
+                    File customDir = new File(customPath);
+                    if (!customDir.exists()) {
+                        if (customDir.mkdirs()) {
+                            Log.i(TAG, "DownloadTask (" + this.downloadId + "): Custom download directory created: " + customPath);
+                            chosenDir = customDir;
+                        } else {
+                            Log.e(TAG, "DownloadTask (" + this.downloadId + "): Failed to create custom download directory: " + customPath + ". Falling back to default.");
+                            chosenDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                        }
+                    } else {
+                        Log.i(TAG, "DownloadTask (" + this.downloadId + "): Using existing custom download directory: " + customPath);
+                        chosenDir = customDir;
+                    }
+                } else {
+                    // If path is the default placeholder or empty, use the standard Downloads directory
+                    chosenDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    Log.i(TAG, "DownloadTask (" + this.downloadId + "): Using default download directory: " + chosenDir.getAbsolutePath());
                 }
-                downloadedFile = new File(downloadDir, fileName);
+
+                // Ensure the chosen directory (could be default public or custom) exists or can be created
+                if (!chosenDir.exists()) {
+                    if (!chosenDir.mkdirs()) {
+                        Log.e(TAG, "DownloadTask (" + this.downloadId + "): Failed to create chosen download directory: " + chosenDir.getAbsolutePath() + ". Download will likely fail.");
+                        // Optionally, you could throw an exception here or return null early
+                    }
+                }
+
+                downloadedFile = new File(chosenDir, fileName);
                 String localPath = downloadedFile.getAbsolutePath();
                 updateDownloadLocalPath(downloadId, localPath); // Salvar o caminho local no DB
                 
