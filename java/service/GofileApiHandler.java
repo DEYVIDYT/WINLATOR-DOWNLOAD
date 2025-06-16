@@ -5,7 +5,8 @@ import org.json.JSONObject;
 import org.json.JSONException;
 
 import java.io.BufferedReader;
-import java.io.DataOutputStream;
+// DataOutputStream is not strictly needed if we are sending an empty body with Content-Length: 0
+// import java.io.DataOutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -60,15 +61,21 @@ public class GofileApiHandler {
         try {
             URL url = new URL(API_BASE_URL + "/accounts");
             conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST"); // The python script uses POST for account creation
+            conn.setRequestMethod("POST");
             conn.setRequestProperty("User-Agent", USER_AGENT);
             conn.setRequestProperty("Accept", "*/*");
             conn.setRequestProperty("Accept-Encoding", "gzip, deflate, br");
             conn.setRequestProperty("Connection", "keep-alive");
-            conn.setDoOutput(false); // No body for this POST to get a guest token as per observed behavior
+
+            // Modification for POST with empty body
+            conn.setDoOutput(true); // Required to send a body, even if empty, or to set Content-Length
+            conn.setRequestProperty("Content-Length", "0");
+            // No data is written to conn.getOutputStream(), effectively sending an empty body.
+
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
 
+            // It's good practice to get response code after all configurations and potential body write
             int responseCode = conn.getResponseCode();
             Log.d(TAG, "getGuestToken: Response Code: " + responseCode);
 
@@ -89,15 +96,17 @@ public class GofileApiHandler {
                 }
             } else {
                 Log.e(TAG, "getGuestToken: HTTP Error. Code: " + responseCode + " Message: " + conn.getResponseMessage());
-                 // Log error stream
-                BufferedReader errorStream = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-                String errorLine;
-                StringBuilder errorResponse = new StringBuilder();
-                while ((errorLine = errorStream.readLine()) != null) {
-                    errorResponse.append(errorLine);
+                // Log error stream if available
+                if (conn.getErrorStream() != null) {
+                    BufferedReader errorStream = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+                    String errorLine;
+                    StringBuilder errorResponse = new StringBuilder();
+                    while ((errorLine = errorStream.readLine()) != null) {
+                        errorResponse.append(errorLine);
+                    }
+                    errorStream.close();
+                    Log.e(TAG, "getGuestToken: Error stream response: " + errorResponse.toString());
                 }
-                errorStream.close();
-                Log.e(TAG, "getGuestToken: Error stream response: " + errorResponse.toString());
             }
         } catch (Exception e) {
             Log.e(TAG, "getGuestToken: Exception", e);
@@ -136,13 +145,13 @@ public class GofileApiHandler {
         HttpURLConnection conn = null;
         try {
             // Construct URL, including password if provided
-            String urlString = API_BASE_URL + "/contents/" + contentId + "?wt=4fd6sg89d7s6&cache=true"; // wt is from python script, might be a web token or similar
+            // Added missing sortField and sortDirection parameters
+            String urlString = API_BASE_URL + "/contents/" + contentId +
+                               "?wt=4fd6sg89d7s6&cache=true&sortField=createTime&sortDirection=1";
             if (password != null && !password.isEmpty()) {
                 String hashedPassword = sha256(password);
                 if (hashedPassword == null) {
                     Log.e(TAG, "getContentDetails: Failed to hash password.");
-                    // Decide if to proceed without password or fail
-                    // For now, proceeding without, Gofile might reject if password is required
                 } else {
                      urlString += "&password=" + hashedPassword;
                 }
@@ -178,23 +187,24 @@ public class GofileApiHandler {
                     JSONObject data = jsonResponse.getJSONObject("data");
                      if (data.has("passwordStatus") && !"passwordOk".equals(data.getString("passwordStatus"))) {
                         Log.w(TAG, "getContentDetails: Password required or incorrect. Status: " + data.getString("passwordStatus"));
-                        // You might want to throw a specific exception or return a specific error object here
-                        return null; // Or a GofileEntry indicating password error
+                        return null;
                     }
-                    return parseGofileEntry(data, null); // Start parsing from the root
+                    return parseGofileEntry(data, null);
                 } else {
                     Log.e(TAG, "getContentDetails: API status not OK. Response: " + response.toString());
                 }
             } else {
                 Log.e(TAG, "getContentDetails: HTTP Error. Code: " + responseCode + " Message: " + conn.getResponseMessage());
-                BufferedReader errorStream = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-                String errorLine;
-                StringBuilder errorResponse = new StringBuilder();
-                while ((errorLine = errorStream.readLine()) != null) {
-                    errorResponse.append(errorLine);
+                 if (conn.getErrorStream() != null) {
+                    BufferedReader errorStream = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+                    String errorLine;
+                    StringBuilder errorResponse = new StringBuilder();
+                    while ((errorLine = errorStream.readLine()) != null) {
+                        errorResponse.append(errorLine);
+                    }
+                    errorStream.close();
+                    Log.e(TAG, "getContentDetails: Error stream response: " + errorResponse.toString());
                 }
-                errorStream.close();
-                Log.e(TAG, "getContentDetails: Error stream response: " + errorResponse.toString());
             }
         } catch (Exception e) {
             Log.e(TAG, "getContentDetails: Exception", e);
@@ -209,14 +219,14 @@ public class GofileApiHandler {
     private GofileEntry parseGofileEntry(JSONObject data, String parentId) throws JSONException {
         GofileEntry entry = new GofileEntry();
         entry.id = data.getString("id");
-        entry.type = data.getString("type"); // "folder" or "file"
+        entry.type = data.getString("type");
         entry.name = data.getString("name");
         entry.parentFolderId = parentId;
 
         if ("file".equals(entry.type)) {
             entry.directLink = data.optString("link", null);
             entry.size = data.optLong("size", 0);
-            entry.code = data.optString("code", null); // This seems to be the childId for files inside a folder
+            entry.code = data.optString("code", null);
             if (entry.directLink == null) {
                  Log.w(TAG, "File entry " + entry.name + " has no direct link. Data: " + data.toString());
             }
@@ -225,11 +235,11 @@ public class GofileApiHandler {
                 JSONObject childrenObject = data.getJSONObject("children");
                 Iterator<String> keys = childrenObject.keys();
                 while (keys.hasNext()) {
-                    String key = keys.next(); // This key is the childId
+                    String key = keys.next();
                     JSONObject childData = childrenObject.getJSONObject(key);
                     GofileEntry childEntry = parseGofileEntry(childData, entry.id);
                     if (childEntry != null) {
-                         childEntry.code = key; // Store the childId (code)
+                         childEntry.code = key;
                          entry.children.add(childEntry);
                     }
                 }
