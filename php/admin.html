@@ -35,7 +35,7 @@
         }
 
         h1 { /* Page Title */
-            font-size: 2.25rem; /* Adjusted from 2.5rem */
+            font-size: 2.25rem;
             font-weight: 400;
             color: #6200EE; /* Primary Color */
             text-align: center;
@@ -43,7 +43,7 @@
         }
 
         h2 { /* Section Title */
-            font-size: 1.5rem; /* Adjusted from 1.8rem */
+            font-size: 1.5rem;
             font-weight: 500;
             color: rgba(0,0,0,0.87);
             text-align: center;
@@ -62,19 +62,19 @@
         .input-field-group {
             position: relative;
             margin-bottom: 24px;
-            background-color: rgba(0, 0, 0, 0.04); /* Light fill for the input */
+            background-color: rgba(0, 0, 0, 0.04);
             border-top-left-radius: 4px;
             border-top-right-radius: 4px;
-            padding-top: 20px; /* Space for label to float */
+            padding-top: 20px;
             width: 100%;
-            max-width: 350px; /* Max width for input group */
-            border-bottom: 1px solid rgba(0, 0, 0, 0.42); /* Bottom line - medium emphasis */
+            max-width: 350px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.42);
             transition: border-bottom-color 0.2s ease, background-color 0.2s ease;
         }
 
         .input-field-group:hover {
             background-color: rgba(0, 0, 0, 0.08);
-            border-bottom-color: rgba(0, 0, 0, 0.87); /* Bottom line - high emphasis on hover */
+            border-bottom-color: rgba(0, 0, 0, 0.87);
         }
 
         .input-field-group input[type="password"] {
@@ -90,33 +90,31 @@
 
         .input-field-group label {
             position: absolute;
-            top: 24px; /* Vertically center with input padding */
+            top: 24px;
             left: 12px;
             font-size: 1rem;
-            color: rgba(0, 0, 0, 0.6); /* Medium emphasis */
+            color: rgba(0, 0, 0, 0.6);
             pointer-events: none;
             transition: top 0.2s ease, font-size 0.2s ease, color 0.2s ease;
         }
 
-        /* Floating label effect */
         .input-field-group input[type="password"]:focus + label,
         .input-field-group input[type="password"]:not(:placeholder-shown) + label {
-            top: 6px; /* Move label up */
+            top: 6px;
             font-size: 0.75rem;
-            color: #6200EE; /* Primary color for focused/filled label */
+            color: #6200EE;
         }
 
-        /* Underline effect for focus */
-        .input-field-group::after { /* Create a pseudo-element for the underline */
+        .input-field-group::after {
             content: '';
             display: block;
             position: absolute;
-            bottom: -1px; /* Align with the border-bottom or overlap it */
+            bottom: -1px;
             left: 0;
             width: 100%;
-            height: 2px; /* Thickness of the underline */
-            background-color: #6200EE; /* Primary color for the underline */
-            transform: scaleX(0); /* Initially hidden */
+            height: 2px;
+            background-color: #6200EE;
+            transform: scaleX(0);
             transition: transform 0.2s ease-out;
         }
 
@@ -136,7 +134,7 @@
 
         #loginError {
             color: #B00020; /* Error Color */
-            margin-top: -8px; /* Pull closer to input */
+            margin-top: -8px;
             margin-bottom: 16px;
             min-height: 1.2em;
             font-size: 0.875rem;
@@ -181,7 +179,7 @@
             align-items: center;
         }
         .btn .btn-icon svg {
-            width: 18px; /* Default for button icons */
+            width: 18px;
             height: 18px;
             fill: currentColor;
         }
@@ -213,7 +211,7 @@
 
         #pendingGamesList {
             margin-top: 16px;
-            margin-bottom: 24px;
+            margin-bottom: 24px; /* Existing margin */
         }
 
         /* Game Item Card Styling */
@@ -253,20 +251,17 @@
             align-items: center;
         }
         .card-header .game-status .status-icon svg {
-            width: 16px; /* Smaller for status indicators */
+            width: 16px;
             height: 16px;
-            /* fill is handled by specific status class */
         }
 
         /* Status specific styles */
-        .status-text_pending {
-            color: #FFA000;
-        }
-        .status-icon_pending svg {
-            fill: #FFA000;
-        }
+        .status-text_pending { color: #FFA000; }
+        .status-icon_pending svg { fill: #FFA000; }
+
         .status-text_approved { color: #4CAF50; }
         .status-icon_approved svg { fill: #4CAF50; }
+
         .status-text_rejected { color: #D32F2F; }
         .status-icon_rejected svg { fill: #D32F2F; }
 
@@ -315,12 +310,40 @@
             width: fit-content;
         }
 
-        /* Message for no pending games */
-        #pendingGamesList p {
+        /* Approved Games Section Specifics */
+        #approvedGamesSection {
+            margin-top: 40px; /* Original margin */
+            border-top: 1px solid #e0e0e0; /* Separator line */
+            padding-top: 20px; /* Space above the title */
+        }
+        #approvedGamesSection h2 {
+            /* Uses global h2 style, margin-bottom is 20px */
+            /* If more space needed below this h2 specifically: */
+             margin-bottom: 16px;
+        }
+        #loadApprovedButton {
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+            margin-bottom: 24px; /* Increased space before the list appears */
+            /* width: fit-content; /* Already a characteristic of .btn if not full width */
+        }
+        /* SVG icon color for primary button if not inheriting correctly */
+        #loadApprovedButton .btn-icon svg {
+             fill: #FFFFFF; /* Ensure icon is white on primary background */
+        }
+
+
+        /* Message for no pending/approved games */
+        #pendingGamesList p,
+        #approvedGamesList p {
             text-align: center;
-            padding: 20px;
+            padding: 24px 16px;
             font-size: 1rem;
             color: rgba(0,0,0,0.6);
+            border: 1px dashed rgba(0,0,0,0.12);
+            border-radius: 4px;
+            margin-top: 16px; /* Space from button or title */
         }
 
 
@@ -350,6 +373,7 @@
             .card-actions .btn:last-child { margin-bottom: 0; }
 
             #logoutButton { width: 100%; }
+            #loadApprovedButton { width: 100%; margin-bottom: 16px; }
         }
     </style>
 </head>
@@ -375,6 +399,18 @@
             <div id="pendingGamesList">
                 <!-- Game items will be dynamically inserted here -->
             </div>
+
+            <div id="approvedGamesSection">
+                <h2>Jogos Aprovados</h2>
+                <button id="loadApprovedButton" class="btn btn-primary" onclick="loadApprovedGames()">
+                    <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></span>
+                    <span class="btn-text">Carregar Jogos Aprovados</span>
+                </button>
+                <div id="approvedGamesList" style="margin-top: 16px;">
+                    <!-- Approved game cards will be dynamically inserted here -->
+                </div>
+            </div>
+
             <button id="logoutButton" class="btn btn-danger logout-btn" onclick="logout()">
                 <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg></span>
                 <span class="btn-text">Sair</span>
@@ -386,6 +422,13 @@
         const ADMIN_PHP = 'admin.php';
         let sessionToken = null;
 
+        // --- SVG Icon Definitions ---
+        const statusPendingIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 0 24 24" width="16px"><path d="M0 0h24v24H0z" fill="none"/><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>`;
+        const statusApprovedIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 0 24 24" width="16px"><path d="M0 0h24v24H0z" fill="none"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>`;
+        const approveActionIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>`;
+        const deleteIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg>`;
+
+
         function escapeHTML(str) {
             if (typeof str !== 'string') return '';
             return str.replace(/[&<>"']/g, function (match) {
@@ -394,66 +437,35 @@
         }
 
         async function loadPendingGames() {
-            if (!sessionToken) {
-                document.getElementById('loginError').textContent = 'Não está logado ou a sessão expirou.';
-                logout();
-                return;
-            }
+            if (!sessionToken) { logout(); return; }
             const listDiv = document.getElementById('pendingGamesList');
-            listDiv.innerHTML = '';
+            listDiv.innerHTML = '<p>Carregando jogos pendentes...</p>';
 
             try {
                 const response = await fetch(`${ADMIN_PHP}?action=list_pending&token=${encodeURIComponent(sessionToken)}`);
                 if (!response.ok) {
-                    let errorMsg = `<p style="color:red">Erro ao carregar jogos: ${response.status} ${response.statusText}</p>`;
-                    try {
-                        const errorResult = await response.json();
-                        if (errorResult.message) {
-                            errorMsg += `<br>${errorResult.message}`;
-                            if (response.status === 401 || (errorResult.message && errorResult.message.toLowerCase().includes('session'))) logout();
-                        }
-                    } catch (e) { /* Ignore */ }
-                    listDiv.innerHTML = errorMsg;
-                    return;
+                    let errorMsg = `Erro ao carregar jogos pendentes: ${response.status} ${response.statusText}`;
+                    try { const e = await response.json(); if (e.message) errorMsg += ` - ${e.message}`; if (response.status === 401) logout(); } catch (ex) {}
+                    listDiv.innerHTML = `<p style="color:red">${errorMsg}</p>`; return;
                 }
                 const games = await response.json();
+                if (games.success === false) { listDiv.innerHTML = `<p style="color:red">${games.message}</p>`; if (games.message.toLowerCase().includes('session')) logout(); return; }
+                if (!Array.isArray(games)) { listDiv.innerHTML = '<p style="color:red">Resposta inesperada.</p>'; console.error(games); return; }
 
-                if (games.success === false && games.message) {
-                    listDiv.innerHTML = `<p style="color:red">${games.message}</p>`;
-                     if (response.status === 401 || (games.message && games.message.toLowerCase().includes('session'))) logout();
-                    return;
-                }
-
-                if (!Array.isArray(games)) {
-                     listDiv.innerHTML = '<p style="color:red">Resposta inesperada do servidor ao carregar jogos.</p>';
-                     console.error("Expected array of games, got:", games);
-                     return;
-                }
-
-                if (games.length === 0) {
-                    listDiv.innerHTML = '<p>Nenhum jogo pendente.</p>';
-                    return;
-                }
+                listDiv.innerHTML = '';
+                if (games.length === 0) { listDiv.innerHTML = '<p>Nenhum jogo pendente.</p>'; return; }
 
                 games.forEach(game => {
                     const item = document.createElement('div');
                     item.className = 'game-item card';
-
-                    const gameName = game.name || 'Nome Indisponível';
-                    const gameSize = game.size || 'Tamanho Indisponível';
-                    const gameUrl = game.url || 'URL Indisponível';
-                    const gameStatus = game.status || 'desconhecido';
-                    const statusClassSuffix = gameStatus.toLowerCase();
-
-                    const statusIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 0 24 24" width="16px"><path d="M0 0h24v24H0z" fill="none"/><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>`;
-                    const approveIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>`;
-                    const rejectIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg>`;
+                    const gameName = game.name || 'N/A'; const gameSize = game.size || 'N/A'; const gameUrl = game.url || 'N/A';
+                    const gameStatus = game.status || 'desconhecido'; const statusClassSuffix = gameStatus.toLowerCase();
 
                     item.innerHTML = `
                         <div class="card-header">
                             <strong class="game-name">${escapeHTML(gameName)}</strong>
                             <span class="game-status">
-                                <span class="icon status-icon status-icon_${statusClassSuffix}">${statusIconSVG}</span>
+                                <span class="icon status-icon status-icon_${statusClassSuffix}">${statusPendingIconSVG}</span>
                                 <span class="status-text status-text_${statusClassSuffix}">${escapeHTML(gameStatus)}</span>
                             </span>
                         </div>
@@ -463,151 +475,138 @@
                         </div>
                         <div class="card-actions">
                             <button class="btn btn-success approve-btn" onclick="approveGame('${escapeHTML(gameName)}')">
-                                <span class="btn-icon approve-icon">${approveIconSVG}</span>
+                                <span class="btn-icon approve-icon">${approveActionIconSVG}</span>
                                 <span class="btn-text">Aprovar</span>
                             </button>
                             <button class="btn btn-danger reject-btn" onclick="rejectGame('${escapeHTML(gameName)}')">
-                                <span class="btn-icon reject-icon">${rejectIconSVG}</span>
-                                <span class="btn-text">Rejeitar</span>
+                                <span class="btn-icon reject-icon">${deleteIconSVG}</span>
+                                <span class="btn-text">Excluir</span>
                             </button>
-                        </div>
-                    `;
+                        </div>`;
                     listDiv.appendChild(item);
                 });
-            } catch (error) {
-                console.error('loadPendingGames error:', error);
-                listDiv.innerHTML = '<p style="color:red">Não foi possível buscar os jogos pendentes. Verifique o console.</p>';
-            }
+            } catch (error) { console.error('loadPendingGames error:', error); listDiv.innerHTML = '<p style="color:red">Erro ao buscar jogos pendentes.</p>';}
+        }
+
+        async function loadApprovedGames() {
+            if (!sessionToken) { logout(); return; }
+            const listDiv = document.getElementById('approvedGamesList');
+            listDiv.innerHTML = '<p>Carregando jogos aprovados...</p>';
+
+            try {
+                const response = await fetch(`${ADMIN_PHP}?action=list_approved&token=${encodeURIComponent(sessionToken)}`);
+                if (!response.ok) {
+                    let errorMsg = `Erro ao carregar jogos aprovados: ${response.status} ${response.statusText}`;
+                    try{const e = await response.json(); if(e.message) errorMsg += ` - ${e.message}`; if(response.status === 401) logout(); } catch(ex){}
+                    listDiv.innerHTML = `<p style="color:red">${errorMsg}</p>`; return;
+                }
+                const games = await response.json();
+                if (games.success === false) { listDiv.innerHTML = `<p style="color:red">${games.message}</p>`; if (games.message.toLowerCase().includes('session')) logout(); return; }
+                if (!Array.isArray(games)) { listDiv.innerHTML = '<p style="color:red">Resposta inesperada.</p>'; console.error(games); return; }
+
+                listDiv.innerHTML = '';
+                if (games.length === 0) { listDiv.innerHTML = '<p>Nenhum jogo aprovado encontrado.</p>'; return; }
+
+                games.forEach(game => {
+                    const item = document.createElement('div');
+                    item.className = 'game-item card';
+                    const gameName = game.name || 'N/A'; const gameSize = game.size || 'N/A'; const gameUrl = game.url || 'N/A';
+                    const gameStatus = game.status || 'desconhecido'; const statusClassSuffix = 'approved'; // Hardcoded for this list
+
+                    item.innerHTML = `
+                        <div class="card-header">
+                            <strong class="game-name">${escapeHTML(gameName)}</strong>
+                            <span class="game-status">
+                                <span class="icon status-icon status-icon_${statusClassSuffix}">${statusApprovedIconSVG}</span>
+                                <span class="status-text status-text_${statusClassSuffix}">${escapeHTML(gameStatus)}</span>
+                            </span>
+                        </div>
+                        <div class="card-content">
+                            <p class="game-size">Tamanho: ${escapeHTML(gameSize)}</p>
+                            <p class="game-url">URL: ${escapeHTML(gameUrl)}</p>
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn btn-danger delete-btn" onclick="deleteApprovedGame('${escapeHTML(gameName)}')">
+                                <span class="btn-icon delete-icon">${deleteIconSVG}</span>
+                                <span class="btn-text">Excluir</span>
+                            </button>
+                        </div>`;
+                    listDiv.appendChild(item);
+                });
+            } catch (error) { console.error('loadApprovedGames error:', error); listDiv.innerHTML = '<p style="color:red">Erro ao buscar jogos aprovados.</p>'; }
         }
 
         async function login() {
-            const passwordInput = document.getElementById('password');
-            const password = passwordInput.value;
-            const loginErrorP = document.getElementById('loginError');
-            loginErrorP.textContent = '';
-
-            if (!password) {
-                loginErrorP.textContent = 'A senha não pode estar vazia.';
-                return;
-            }
+            const passwordInput = document.getElementById('password'); const password = passwordInput.value;
+            const loginErrorP = document.getElementById('loginError'); loginErrorP.textContent = '';
+            if (!password) { loginErrorP.textContent = 'A senha não pode estar vazia.'; return; }
 
             try {
                 const response = await fetch(ADMIN_PHP, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: `action=login&password=${encodeURIComponent(password)}`
                 });
-
                 if (!response.ok) {
                     let errorMsg = `Falha no login: ${response.status} ${response.statusText}`;
-                    try {
-                        const errorResult = await response.json();
-                        if (errorResult.message) {
-                             errorMsg += ` - ${errorResult.message}`;
-                        }
-                    } catch (e) { /* Ignore */ }
-                    loginErrorP.textContent = errorMsg;
-                    sessionToken = null;
-                    return;
+                    try{const e = await response.json(); if(e.message) errorMsg += ` - ${e.message}`; } catch(ex){}
+                    loginErrorP.textContent = errorMsg; sessionToken = null; return;
                 }
-
                 const result = await response.json();
-
                 if (result.success && result.token) {
                     sessionToken = result.token;
                     document.getElementById('loginSection').classList.add('hidden');
                     document.getElementById('adminContent').classList.remove('hidden');
                     passwordInput.value = '';
                     loadPendingGames();
-                } else {
-                    loginErrorP.textContent = result.message || 'Falha no login. Motivo desconhecido.';
-                    sessionToken = null;
-                }
-            } catch (error) {
-                console.error('Erro na função de login:', error);
-                loginErrorP.textContent = 'Erro de login: Não foi possível conectar ou processar a resposta. Verifique o console.';
-                sessionToken = null;
-            }
+                    document.getElementById('approvedGamesList').innerHTML = '';
+                } else { loginErrorP.textContent = result.message || 'Falha no login.'; sessionToken = null; }
+            } catch (error) { console.error('Login error:', error); loginErrorP.textContent = 'Erro de login. Verifique o console.'; sessionToken = null;}
         }
 
         async function approveGame(name) {
-            if (!sessionToken) {
-                alert('Sessão expirada. Por favor, faça login novamente.');
-                logout();
-                return;
-            }
+            if (!sessionToken) { logout(); return; }
             if (!confirm(`Tem certeza que deseja aprovar o jogo: ${name}?`)) return;
 
-            const gameNameEncoded = encodeURIComponent(name);
-            const tokenEncoded = encodeURIComponent(sessionToken);
-
             try {
-                const response = await fetch(`${ADMIN_PHP}?action=approve&name=${gameNameEncoded}&token=${tokenEncoded}`, { method: 'POST' });
-                 if (!response.ok) {
+                const response = await fetch(`${ADMIN_PHP}?action=approve&name=${encodeURIComponent(name)}&token=${encodeURIComponent(sessionToken)}`, { method: 'POST' });
+                if (!response.ok) {
                     let errorMsg = `Erro ao aprovar: ${response.status} ${response.statusText}`;
-                    try {
-                        const errorResult = await response.json();
-                        if (errorResult.message) errorMsg += ` - ${errorResult.message}`;
-                        if (response.status === 401 || (errorResult.message && errorResult.message.toLowerCase().includes('session'))) {
-                             alert(errorResult.message || 'Sessão inválida ou expirada.');
-                             logout();
-                        } else {
-                            alert(errorMsg);
-                        }
-                    } catch (e) { alert(errorMsg); }
-                    return;
+                    try{const e = await response.json(); if(e.message) errorMsg += ` - ${e.message}`; if(response.status === 401) logout(); } catch(ex){}
+                    alert(errorMsg); return;
                 }
                 const result = await response.json();
                 if (result.success) {
                     loadPendingGames();
-                } else {
-                    alert('Erro ao aprovar o jogo: ' + (result.message || 'Erro desconhecido'));
-                     if (result.message && result.message.toLowerCase().includes('session')) logout();
-                }
-            } catch (error) {
-                console.error("Approve game error:", error);
-                alert("Erro de rede ao aprovar o jogo.");
-            }
+                    loadApprovedGames();
+                } else { alert('Erro ao aprovar: ' + (result.message || 'Erro.')); if (result.message && result.message.toLowerCase().includes('session')) logout(); }
+            } catch (error) { console.error("Approve game error:", error); alert("Erro de rede ao aprovar."); }
         }
 
         async function rejectGame(name) {
-            if (!sessionToken) {
-                alert('Sessão expirada. Por favor, faça login novamente.');
-                logout();
-                return;
-            }
-            if (!confirm(`Tem certeza que deseja rejeitar o jogo: ${name}?`)) return;
+            if (!confirm(`Tem certeza que deseja EXCLUIR o jogo PENDENTE: ${name}?\nEsta ação não pode ser desfeita.`)) return;
+            await deleteGameInternal(name, 'pending');
+        }
+        async function deleteApprovedGame(name) {
+            if (!confirm(`Tem certeza que deseja EXCLUIR PERMANENTEMENTE o jogo APROVADO: ${name}?\nEsta ação não pode ser desfeita.`)) return;
+            await deleteGameInternal(name, 'approved');
+        }
 
-            const gameNameEncoded = encodeURIComponent(name);
-            const tokenEncoded = encodeURIComponent(sessionToken);
-
+        async function deleteGameInternal(name, listType) {
+            if (!sessionToken) { logout(); return; }
             try {
-                const response = await fetch(`${ADMIN_PHP}?action=reject&name=${gameNameEncoded}&token=${tokenEncoded}`, { method: 'POST' });
+                const response = await fetch(`${ADMIN_PHP}?action=delete_game&name=${encodeURIComponent(name)}&token=${encodeURIComponent(sessionToken)}`, { method: 'POST' });
                 if (!response.ok) {
-                    let errorMsg = `Erro ao rejeitar: ${response.status} ${response.statusText}`;
-                    try {
-                        const errorResult = await response.json();
-                        if (errorResult.message) errorMsg += ` - ${errorResult.message}`;
-                         if (response.status === 401 || (errorResult.message && errorResult.message.toLowerCase().includes('session'))) {
-                            alert(errorResult.message || 'Sessão inválida ou expirada.');
-                            logout();
-                        } else {
-                            alert(errorMsg);
-                        }
-                    } catch (e) { alert(errorMsg); }
-                    return;
+                    let errorMsg = `Erro ao excluir: ${response.status} ${response.statusText}`;
+                    try{const e = await response.json(); if(e.message) errorMsg += ` - ${e.message}`; if(response.status === 401) logout(); } catch(ex){}
+                    alert(errorMsg); return;
                 }
                 const result = await response.json();
                 if (result.success) {
-                    loadPendingGames();
-                } else {
-                    alert('Erro ao rejeitar o jogo: ' + (result.message || 'Erro desconhecido'));
-                    if (result.message && result.message.toLowerCase().includes('session')) logout();
-                }
-            } catch (error) {
-                console.error("Reject game error:", error);
-                alert("Erro de rede ao rejeitar o jogo.");
-            }
+                    alert(`Jogo '${name}' excluído com sucesso.`);
+                    if (listType === 'pending') loadPendingGames();
+                    else if (listType === 'approved') loadApprovedGames();
+                } else { alert('Erro ao excluir: ' + (result.message || 'Erro.')); if (result.message && result.message.toLowerCase().includes('session')) logout(); }
+            } catch (error) { console.error("Delete game error:", error); alert("Erro de rede ao excluir.");}
         }
 
         function logout() {
@@ -615,6 +614,7 @@
             document.getElementById('loginSection').classList.remove('hidden');
             document.getElementById('adminContent').classList.add('hidden');
             document.getElementById('pendingGamesList').innerHTML = '';
+            document.getElementById('approvedGamesList').innerHTML = '';
             document.getElementById('password').value = '';
             document.getElementById('loginError').textContent = '';
         }

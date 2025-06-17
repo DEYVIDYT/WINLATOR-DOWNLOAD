@@ -17,7 +17,20 @@ function json_exit($data) {
 
 // Generate a dummy token
 function generateToken($password) {
-    return hash('sha256', $password . 'some_salt_v2'); // Changed salt just in case
+    return hash('sha256', $password . 'some_salt_v2');
+}
+
+// Load games data function
+function loadGames($file) {
+    if (!file_exists($file)) return [];
+    $data = file_get_contents($file);
+    $games = json_decode($data, true);
+    return $games === null ? [] : $games;
+}
+
+// Save games data function
+function saveGames($file, $games) {
+    return file_put_contents($file, json_encode($games, JSON_PRETTY_PRINT));
 }
 
 try {
@@ -28,7 +41,6 @@ try {
         if (empty($password)) {
             $response = ['success' => false, 'message' => 'Password cannot be empty.'];
         } elseif ($password === ADMIN_PASSWORD) {
-            // Regenerate session ID on login for security
             session_regenerate_id(true);
             $_SESSION[SESSION_TOKEN_KEY] = generateToken(ADMIN_PASSWORD);
             $response = ['success' => true, 'message' => 'Login successful', 'token' => $_SESSION[SESSION_TOKEN_KEY]];
@@ -40,100 +52,113 @@ try {
     }
 
     // For all actions below, check token
-    // This part of token validation needs to be robust
     $clientToken = $_REQUEST['token'] ?? null;
 
-    if (!$clientToken && $action !== 'login') {
+    if (!$clientToken && $action !== 'login') { // No token and not a login attempt
          http_response_code(401);
          json_exit(['success' => false, 'message' => 'Authentication token not provided.']);
     }
 
-    // Check session existence and token match for non-login actions
-    if ($action !== 'login') {
+    if ($action !== 'login') { // For any action other than login, validate token
         if (!isset($_SESSION[SESSION_TOKEN_KEY])) {
             http_response_code(401);
-            // Session might have expired or was never set
             json_exit(['success' => false, 'message' => 'Session not found or expired. Please login again.']);
         } elseif ($_SESSION[SESSION_TOKEN_KEY] !== $clientToken) {
             http_response_code(401);
-            // Token mismatch
             json_exit(['success' => false, 'message' => 'Invalid session token. Please login again.']);
         }
     }
 
-
-    // --- Action handling (list_pending, approve, reject) ---
-    // (Load/Save functions remain the same as before)
-    function loadGames($file) {
-        if (!file_exists($file)) return [];
-        $data = file_get_contents($file);
-        $games = json_decode($data, true);
-        return $games === null ? [] : $games;
-    }
-
-    function saveGames($file, $games) {
-        return file_put_contents($file, json_encode($games, JSON_PRETTY_PRINT));
-    }
-
+    // --- Authenticated Actions ---
     if ($action === 'list_pending') {
         $games = loadGames($jsonFile);
         $pendingGames = array_filter($games, function($game) {
             return isset($game['status']) && $game['status'] === 'pending';
         });
-        json_exit(array_values($pendingGames)); // Use json_exit
+        json_exit(array_values($pendingGames));
     }
 
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'approve' || $action === 'reject')) {
-        $gameName = $_REQUEST['name'] ?? ''; // Use $_REQUEST for name for flexibility with GET/POST
-        if (empty($gameName)) {
-            json_exit(['success' => false, 'message' => 'Game name not provided.']);
-        }
+    if ($action === 'list_approved') {
+        $games = loadGames($jsonFile);
+        $approvedGames = array_filter($games, function($game) {
+            return isset($game['status']) && $game['status'] === 'approved';
+        });
+        json_exit(array_values($approvedGames));
+    }
 
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'approve') {
+        $gameName = $_REQUEST['name'] ?? '';
+        if (empty($gameName)) {
+            json_exit(['success' => false, 'message' => 'Game name not provided for approval.']);
+        }
         $games = loadGames($jsonFile);
         $gameFound = false;
-        // $updatedGames = []; // Create a new array for modification - Not needed if modifying $games by reference/key
-         foreach ($games as $key => &$game) { // Ensure $game is by reference to modify directly or use $key
-             if ($game['name'] === $gameName) {
-                 if ($action === 'approve') {
-                     $game['status'] = 'approved'; // Modify $game directly (if by reference) or $games[$key]
-                     $response = ['success' => true, 'message' => 'Game approved.'];
-                 } else { // reject
-                     $game['status'] = 'rejected'; // Modify $game directly (if by reference) or $games[$key]
-                     $response = ['success' => true, 'message' => 'Game rejected.'];
-                 }
-                 $gameFound = true;
-                 break;
-             }
-         }
-         unset($game); // Unset reference
-
+        foreach ($games as &$game) {
+            if ($game['name'] === $gameName) {
+                $game['status'] = 'approved';
+                $gameFound = true;
+                break;
+            }
+        }
+        unset($game); // Unset reference
 
         if ($gameFound) {
-            if (!saveGames($jsonFile, $games)) { // Save the modified $games array
-                $response = ['success' => false, 'message' => 'Error saving changes.'];
+            if (saveGames($jsonFile, $games)) {
+                $response = ['success' => true, 'message' => 'Game approved successfully.'];
+            } else {
+                $response = ['success' => false, 'message' => 'Error saving approved game status.'];
             }
         } else {
-            $response = ['success' => false, 'message' => 'Game not found.'];
+            $response = ['success' => false, 'message' => 'Game not found for approval.'];
         }
         json_exit($response);
     }
 
-    // If action is not login and not recognized:
-    if ($action !== 'login' && !empty($action)) { // Added !empty($action) to avoid triggering for just token presence
-         json_exit(['success' => false, 'message' => "Unknown action: {$action}"]);
-    } else if (empty($action) && $_SERVER['REQUEST_METHOD'] !== 'POST' && !isset($_REQUEST['token'])) {
-         // Catch cases where admin.php is loaded directly via GET without action and not a token based request
-         json_exit(['success' => false, 'message' => 'Admin script loaded without specific action.']);
+    // New consolidated delete logic for 'reject' (pending game) and 'delete_game' (any game)
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($action === 'reject' || $action === 'delete_game')) {
+        $gameName = $_REQUEST['name'] ?? '';
+        if (empty($gameName)) {
+            json_exit(['success' => false, 'message' => 'Game name not provided for deletion.']);
+        }
+
+        $games = loadGames($jsonFile);
+        $initialCount = count($games);
+
+        $updatedGames = array_filter($games, function($game) use ($gameName) {
+            return $game['name'] !== $gameName;
+        });
+
+        if (count($updatedGames) < $initialCount) {
+            if (saveGames($jsonFile, array_values($updatedGames))) {
+                $response = ['success' => true, 'message' => "Game '${gameName}' deleted successfully."];
+            } else {
+                $response = ['success' => false, 'message' => 'Error saving data after deleting game.'];
+            }
+        } else {
+            $response = ['success' => false, 'message' => "Game '${gameName}' not found for deletion."];
+        }
+        json_exit($response);
+    }
+
+    // If action is not login and not recognized (and was authenticated):
+    if ($action !== 'login' && !in_array($action, ['list_pending', 'list_approved', 'approve', 'reject', 'delete_game'])) {
+         if (!empty($action)) {
+            json_exit(['success' => false, 'message' => "Unknown action: {$action}"]);
+         } else if (empty($action) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+             // Catch cases where admin.php is loaded directly via GET without action (already authenticated)
+             json_exit(['success' => false, 'message' => 'Admin script loaded without specific action after authentication.']);
+         }
     }
 
 
 } catch (Exception $e) {
-    // Catch any unexpected exceptions and return a JSON error
-    error_log("Admin Panel Error: " . $e->getMessage()); // Log error server-side
+    error_log("Admin Panel Error: " . $e->getMessage());
     json_exit(['success' => false, 'message' => 'An unexpected server error occurred.', 'detail' => $e->getMessage()]);
 }
-// Fallback for any case not caught, though json_exit should be called before this.
-// This line should ideally not be reached if logic is sound.
-// json_exit($response); // Commented out as per instruction - all paths should call json_exit
+
+// Fallback for any unhandled case, though ideally all paths should call json_exit or be caught by try-catch.
+// This also handles the case where $action === 'login' but method is not POST (e.g. direct GET to admin.php?action=login)
+// Or if $action is empty and not caught by other specific messages.
+json_exit($response);
 
 ?>
