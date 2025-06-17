@@ -1,54 +1,445 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
-    <title>Admin Panel</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Administrativo</title>
     <style>
-        /* Basic styling */
-        body { font-family: sans-serif; }
-        .container { margin: 20px; }
-        .game-item { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
-        .hidden { display: none; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top for longer content */
+            min-height: 100vh;
+            padding-top: 20px; /* Add some padding at the top */
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 800px; /* Max width for the panel */
+            margin: 20px;
+        }
+
+        h1, h2 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            margin-bottom: 30px;
+        }
+
+        #loginSection, #adminContent {
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* Center content within sections */
+        }
+
+        #loginSection p, #adminContent p {
+            width: 100%; /* Make paragraphs take full width */
+            text-align: center; /* Center text in paragraphs */
+        }
+
+
+        input[type="password"], input[type="text"] { /* Added text for future */
+            width: calc(100% - 22px); /* Full width minus padding and border */
+            max-width: 300px; /* Max width for input */
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 20px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+            min-width: 120px; /* Minimum width for buttons */
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        #loginSection button {
+            max-width: 324px; /* Match input field max width */
+            width: 100%;
+        }
+
+        #adminContent button.logout-btn { /* Specific class for logout */
+            background-color: #e74c3c;
+            margin-top: 20px;
+        }
+        #adminContent button.logout-btn:hover {
+            background-color: #c0392b;
+        }
+
+
+        #loginError {
+            color: #e74c3c;
+            margin-top: 0;
+            margin-bottom: 15px;
+            min-height: 1.2em; /* Reserve space for error message */
+            font-weight: bold;
+        }
+
+        .hidden {
+            display: none !important; /* Ensure hidden class always hides */
+        }
+
+        #pendingGamesList {
+            width: 100%;
+            margin-top: 20px;
+            border-top: 1px solid #eee; /* Separator */
+        }
+
+        .game-item {
+            background-color: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            padding: 15px;
+            margin-top: 15px; /* Replaces margin-bottom */
+            border-radius: 5px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px; /* Space between elements in game item */
+        }
+
+        .game-item strong {
+            font-size: 1.1em;
+            color: #333;
+        }
+
+        .game-item .details {
+            font-size: 0.95em;
+            color: #555;
+            word-break: break-all; /* Break long URLs */
+        }
+
+        .game-item .status {
+            font-weight: bold;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            display: inline-block; /* So padding works nicely */
+        }
+
+        .game-item .status-pending { /* Class to be dynamically added or default if only pending shown */
+            background-color: #f1c40f; /* Yellow for pending */
+            color: #795548;
+        }
+
+        /* Styles for action buttons within game items */
+        .game-item .actions {
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap; /* Allow buttons to wrap on small screens */
+            gap: 10px; /* Space between buttons */
+        }
+
+        .game-item .actions button {
+            padding: 8px 12px;
+            font-size: 14px;
+            min-width: 90px; /* Smaller min-width for action buttons */
+        }
+
+        .game-item .actions .approve-btn {
+            background-color: #2ecc71; /* Green */
+        }
+        .game-item .actions .approve-btn:hover {
+            background-color: #27ae60;
+        }
+
+        .game-item .actions .reject-btn {
+            background-color: #e74c3c; /* Red */
+        }
+        .game-item .actions .reject-btn:hover {
+            background-color: #c0392b;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+                padding: 20px;
+            }
+            h1 {
+                font-size: 1.8em;
+            }
+            h2 {
+                font-size: 1.5em;
+            }
+            input[type="password"] {
+                font-size: 15px;
+            }
+            button {
+                font-size: 15px;
+                padding: 10px 15px;
+            }
+            .game-item .actions button {
+                width: 100%; /* Make action buttons full width on small screens */
+            }
+        }
+
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Admin Panel</h1>
+        <h1>Painel Administrativo</h1>
 
         <div id="loginSection">
-            Password: <input type="password" id="password">
-            <button onclick="login()">Login</button>
-            <p id="loginError" style="color:red;"></p>
+            <h2>Login</h2>
+            <p id="loginError"></p> <!-- Error message placeholder -->
+            <input type="password" id="password" placeholder="Senha">
+            <button onclick="login()">Entrar</button>
         </div>
 
         <div id="adminContent" class="hidden">
-            <h2>Pending Games</h2>
-            <div id="pendingGamesList"></div>
-            <button onclick="logout()">Logout</button>
+            <h2>Jogos Pendentes</h2>
+            <div id="pendingGamesList">
+                <!-- Pending games will be loaded here by JavaScript -->
+            </div>
+            <button onclick="logout()" class="logout-btn">Sair</button>
         </div>
     </div>
 
     <script>
         const ADMIN_PHP = 'admin.php';
-        // Basic password - In a real app, use secure session management
         let sessionToken = null;
 
-        async function login() {
-            const password = document.getElementById('password').value;
-            const response = await fetch(ADMIN_PHP, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `action=login&password=${encodeURIComponent(password)}`
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            return str.replace(/[&<>"']/g, function (match) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                }[match];
             });
-            const result = await response.json();
-            if (result.success) {
-                sessionToken = result.token; // Store a dummy token
-                document.getElementById('loginSection').classList.add('hidden');
-                document.getElementById('adminContent').classList.remove('hidden');
-                document.getElementById('loginError').textContent = '';
-                loadPendingGames();
-            } else {
-                document.getElementById('loginError').textContent = result.message || 'Login failed.';
+        }
+
+        async function loadPendingGames() {
+            if (!sessionToken) {
+                document.getElementById('loginError').textContent = 'Não está logado ou a sessão expirou.';
+                logout();
+                return;
+            }
+            const listDiv = document.getElementById('pendingGamesList');
+            listDiv.innerHTML = '';
+
+            try {
+                const response = await fetch(`${ADMIN_PHP}?action=list_pending&token=${encodeURIComponent(sessionToken)}`);
+                if (!response.ok) {
+                    let errorMsg = `<p style="color:red">Erro ao carregar jogos: ${response.status} ${response.statusText}</p>`;
+                    try {
+                        const errorResult = await response.json();
+                        if (errorResult.message) {
+                            errorMsg += `<br>${errorResult.message}`;
+                            if (response.status === 401 || errorResult.message.toLowerCase().includes('session') || errorResult.message.toLowerCase().includes('authentication')) {
+                                logout();
+                                document.getElementById('loginError').textContent = errorResult.message;
+                            }
+                        }
+                    } catch (e) { /* Ignore */ }
+                    listDiv.innerHTML = errorMsg;
+                    return;
+                }
+                const games = await response.json();
+
+                if (games.success === false && games.message) {
+                    listDiv.innerHTML = `<p style="color:red">${games.message}</p>`;
+                     if (response.status === 401 || games.message.toLowerCase().includes('session') || games.message.toLowerCase().includes('authentication')) {
+                        logout();
+                        document.getElementById('loginError').textContent = games.message;
+                     }
+                    return;
+                }
+
+                if (!Array.isArray(games)) {
+                     listDiv.innerHTML = '<p style="color:red">Resposta inesperada do servidor ao carregar jogos.</p>';
+                     console.error("Expected array of games, got:", games);
+                     return;
+                }
+
+                if (games.length === 0) {
+                    listDiv.innerHTML = '<p>Nenhum jogo pendente.</p>';
+                    return;
+                }
+
+                games.forEach(game => {
+                    const item = document.createElement('div');
+                    item.className = 'game-item';
+
+                    const gameName = game.name || 'Nome Indisponível';
+                    const gameSize = game.size || 'Tamanho Indisponível';
+                    const gameUrl = game.url || 'URL Indisponível';
+                    const gameStatus = game.status || 'Status Indisponível';
+
+                    item.innerHTML = `
+                        <strong>${escapeHTML(gameName)}</strong>
+                        <div class="details">
+                            Tamanho: ${escapeHTML(gameSize)}<br>
+                            URL: ${escapeHTML(gameUrl)}
+                        </div>
+                        <div class="status status-pending">Status: ${escapeHTML(gameStatus)}</div>
+                        <div class="actions">
+                            <button onclick="approveGame('${escapeHTML(gameName)}')" class="approve-btn">Aprovar</button>
+                            <button onclick="rejectGame('${escapeHTML(gameName)}')" class="reject-btn">Rejeitar</button>
+                        </div>
+                    `;
+                    listDiv.appendChild(item);
+                });
+            } catch (error) {
+                console.error('loadPendingGames error:', error);
+                listDiv.innerHTML = '<p style="color:red">Não foi possível buscar os jogos pendentes. Verifique o console.</p>';
+            }
+        }
+
+        async function login() {
+            const passwordInput = document.getElementById('password');
+            const password = passwordInput.value;
+            const loginErrorP = document.getElementById('loginError');
+            loginErrorP.textContent = '';
+
+            if (!password) {
+                loginErrorP.textContent = 'A senha não pode estar vazia.';
+                return;
+            }
+
+            try {
+                const response = await fetch(ADMIN_PHP, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `action=login&password=${encodeURIComponent(password)}`
+                });
+
+                if (!response.ok) {
+                    let errorMsg = `Falha no login: ${response.status} ${response.statusText}`;
+                    try {
+                        const errorResult = await response.json();
+                        if (errorResult.message) {
+                             errorMsg += ` - ${errorResult.message}`;
+                        }
+                    } catch (e) { /* Ignore */ }
+                    loginErrorP.textContent = errorMsg;
+                    sessionToken = null;
+                    return;
+                }
+
+                const result = await response.json();
+
+                if (result.success && result.token) {
+                    sessionToken = result.token;
+                    document.getElementById('loginSection').classList.add('hidden');
+                    document.getElementById('adminContent').classList.remove('hidden');
+                    passwordInput.value = '';
+                    loadPendingGames();
+                } else {
+                    loginErrorP.textContent = result.message || 'Falha no login. Motivo desconhecido.';
+                    sessionToken = null;
+                }
+            } catch (error) {
+                console.error('Erro na função de login:', error);
+                loginErrorP.textContent = 'Erro de login: Não foi possível conectar ou processar a resposta. Verifique o console.';
                 sessionToken = null;
+            }
+        }
+
+        async function approveGame(name) {
+            if (!sessionToken) {
+                alert('Sessão expirada. Por favor, faça login novamente.');
+                logout();
+                return;
+            }
+            if (!confirm(`Tem certeza que deseja aprovar o jogo: ${escapeHTML(name)}?`)) return;
+
+            const gameNameEncoded = encodeURIComponent(name); // Name is already escaped for confirm, re-encode for URL
+            const tokenEncoded = encodeURIComponent(sessionToken);
+
+            try {
+                const response = await fetch(`${ADMIN_PHP}?action=approve&name=${gameNameEncoded}&token=${tokenEncoded}`, { method: 'POST' });
+                 if (!response.ok) {
+                    let errorMsg = `Erro ao aprovar: ${response.status} ${response.statusText}`;
+                    try {
+                        const errorResult = await response.json();
+                        if (errorResult.message) errorMsg += ` - ${errorResult.message}`;
+                        if (response.status === 401 || (errorResult.message && errorResult.message.toLowerCase().includes('session'))) {
+                            alert(errorResult.message || 'Sessão inválida ou expirada.');
+                            logout();
+                        } else {
+                            alert(errorMsg);
+                        }
+                    } catch (e) { alert(errorMsg); }
+                    return;
+                }
+                const result = await response.json();
+                if (result.success) {
+                    loadPendingGames();
+                } else {
+                    alert('Erro ao aprovar o jogo: ' + (result.message || 'Erro desconhecido'));
+                     if (result.message && result.message.toLowerCase().includes('session')) logout();
+                }
+            } catch (error) {
+                console.error("Approve game error:", error);
+                alert("Erro de rede ao aprovar o jogo.");
+            }
+        }
+
+        async function rejectGame(name) {
+            if (!sessionToken) {
+                alert('Sessão expirada. Por favor, faça login novamente.');
+                logout();
+                return;
+            }
+            if (!confirm(`Tem certeza que deseja rejeitar o jogo: ${escapeHTML(name)}?`)) return;
+
+            const gameNameEncoded = encodeURIComponent(name);
+            const tokenEncoded = encodeURIComponent(sessionToken);
+
+            try {
+                const response = await fetch(`${ADMIN_PHP}?action=reject&name=${gameNameEncoded}&token=${tokenEncoded}`, { method: 'POST' });
+                if (!response.ok) {
+                    let errorMsg = `Erro ao rejeitar: ${response.status} ${response.statusText}`;
+                    try {
+                        const errorResult = await response.json();
+                        if (errorResult.message) errorMsg += ` - ${errorResult.message}`;
+                         if (response.status === 401 || (errorResult.message && errorResult.message.toLowerCase().includes('session'))) {
+                            alert(errorResult.message || 'Sessão inválida ou expirada.');
+                            logout();
+                        } else {
+                           alert(errorMsg);
+                        }
+                    } catch (e) { alert(errorMsg); }
+                    return;
+                }
+                const result = await response.json();
+                if (result.success) {
+                    loadPendingGames();
+                } else {
+                    alert('Erro ao rejeitar o jogo: ' + (result.message || 'Erro desconhecido'));
+                    if (result.message && result.message.toLowerCase().includes('session')) logout();
+                }
+            } catch (error) {
+                console.error("Reject game error:", error);
+                alert("Erro de rede ao rejeitar o jogo.");
             }
         }
 
@@ -58,65 +449,7 @@
             document.getElementById('adminContent').classList.add('hidden');
             document.getElementById('pendingGamesList').innerHTML = '';
             document.getElementById('password').value = '';
-        }
-
-        async function loadPendingGames() {
-            if (!sessionToken) return;
-            const response = await fetch(`${ADMIN_PHP}?action=list_pending&token=${encodeURIComponent(sessionToken)}`);
-            if (response.status === 401) { // Unauthorized
-                logout();
-                document.getElementById('loginError').textContent = 'Session expired or invalid. Please login again.';
-                return;
-            }
-            const games = await response.json();
-            const listDiv = document.getElementById('pendingGamesList');
-            listDiv.innerHTML = '';
-            if (games.error) {
-                listDiv.innerHTML = `<p style="color:red">${games.error}</p>`;
-                return;
-            }
-            if (games.length === 0) {
-                listDiv.innerHTML = '<p>No pending games.</p>';
-                return;
-            }
-            games.forEach(game => {
-                const item = document.createElement('div');
-                item.className = 'game-item';
-                item.innerHTML = `
-                    <strong>${game.name}</strong> (${game.size})<br>
-                    URL: ${game.url}<br>
-                    Status: ${game.status}<br>
-                    <button onclick="approveGame('${game.name}')">Approve</button>
-                    <button onclick="rejectGame('${game.name}')">Reject</button>
-                `;
-                listDiv.appendChild(item);
-            });
-        }
-
-        async function approveGame(name) {
-            if (!sessionToken) return;
-            if (!confirm(\`Are you sure you want to approve ${name}?\`)) return;
-            const response = await fetch(`${ADMIN_PHP}?action=approve&name=${encodeURIComponent(name)}&token=${encodeURIComponent(sessionToken)}`, { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                loadPendingGames();
-            } else {
-                alert('Error approving game: ' + (result.message || 'Unknown error'));
-            }
-             if (response.status === 401) { logout(); document.getElementById('loginError').textContent = 'Session expired. Please login.';}
-        }
-
-        async function rejectGame(name) {
-            if (!sessionToken) return;
-            if (!confirm(\`Are you sure you want to reject ${name}?\`)) return;
-            const response = await fetch(`${ADMIN_PHP}?action=reject&name=${encodeURIComponent(name)}&token=${encodeURIComponent(sessionToken)}`, { method: 'POST' });
-            const result = await response.json();
-            if (result.success) {
-                loadPendingGames();
-            } else {
-                alert('Error rejecting game: ' + (result.message || 'Unknown error'));
-            }
-            if (response.status === 401) { logout(); document.getElementById('loginError').textContent = 'Session expired. Please login.';}
+            document.getElementById('loginError').textContent = '';
         }
     </script>
 </body>
