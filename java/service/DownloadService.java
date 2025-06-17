@@ -125,7 +125,7 @@ public class DownloadService extends Service {
             broadcastManager = LocalBroadcastManager.getInstance(this);
             createNotificationChannel();
             if (executor == null || executor.isShutdown()) { // Ensure executor is initialized
-                executor = Executors.newSingleThreadExecutor();
+                executor = Executors.newFixedThreadPool(5);
             }
             if (mainThreadHandler == null) { // Ensure initialized
                 mainThreadHandler = new Handler(Looper.getMainLooper());
@@ -208,7 +208,7 @@ public class DownloadService extends Service {
                 Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_GOFILE_DOWNLOAD for URL: " + gofileUrl);
                 if (gofileUrl != null && !gofileUrl.isEmpty()) {
                     if (executor == null || executor.isShutdown()) {
-                         executor = Executors.newSingleThreadExecutor();
+                         executor = Executors.newFixedThreadPool(5);
                     }
                     executor.execute(() -> handleResolveGofileUrl(gofileUrl, gofilePassword));
                 } else {
@@ -220,7 +220,7 @@ public class DownloadService extends Service {
                 Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_MEDIAFIRE_DOWNLOAD for URL: " + mediafireUrl);
                 if (mediafireUrl != null && !mediafireUrl.isEmpty()) {
                     if (executor == null || executor.isShutdown()) {
-                         executor = Executors.newSingleThreadExecutor();
+                         executor = Executors.newFixedThreadPool(5);
                     }
                     executor.execute(() -> handleResolveMediafireUrl(mediafireUrl));
                 } else {
@@ -232,7 +232,7 @@ public class DownloadService extends Service {
                 Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_GOOGLE_DRIVE_DOWNLOAD for URL: " + googleDriveUrl);
                 if (googleDriveUrl != null && !googleDriveUrl.isEmpty()) {
                      if (executor == null || executor.isShutdown()) {
-                         executor = Executors.newSingleThreadExecutor();
+                         executor = Executors.newFixedThreadPool(5);
                     }
                     executor.execute(() -> handleResolveGoogleDriveUrl(googleDriveUrl));
                 } else {
@@ -244,7 +244,7 @@ public class DownloadService extends Service {
                 Log.d(TAG, "onStartCommand: ACTION_RESOLVE_AND_START_PIXELDRAIN_DOWNLOAD for URL: " + pixeldrainUrl);
                 if (pixeldrainUrl != null && !pixeldrainUrl.isEmpty()) {
                     if (executor == null || executor.isShutdown()) {
-                        executor = Executors.newSingleThreadExecutor();
+                        executor = Executors.newFixedThreadPool(5);
                     }
                     executor.execute(() -> handleResolvePixeldrainUrl(pixeldrainUrl));
                 } else {
@@ -528,7 +528,7 @@ public class DownloadService extends Service {
 
         if (executor == null || executor.isShutdown()) { // Ensure executor is alive
             Log.w(TAG, "Executor was null/shutdown in handleStartDownload, re-initializing.");
-            executor = Executors.newSingleThreadExecutor();
+            executor = Executors.newFixedThreadPool(5);
         }
 
         // Capture authToken for use in the lambda
@@ -1204,7 +1204,7 @@ public class DownloadService extends Service {
                 
                 input = new BufferedInputStream(connection.getInputStream());
                 
-                byte[] data = new byte[8192]; // Buffer maior
+                byte[] data = new byte[65536]; // Buffer maior
                 int count;
                 long bytesSinceLastUpdate = 0;
                 
@@ -1224,7 +1224,7 @@ public class DownloadService extends Service {
                     
                     // Atualizar o progresso (limitado a cada 500ms ou 1MB)
                     long currentTime = System.currentTimeMillis();
-                    if (currentTime - lastUpdateTime > 500 || bytesSinceLastUpdate > (1024 * 1024)) {
+                    if (currentTime - lastUpdateTime > 1000 || bytesSinceLastUpdate > (2 * 1024 * 1024)) {
                         updateDownloadProgress(downloadId, downloadedBytes, totalBytes);
                         
                         // Calcular a velocidade
