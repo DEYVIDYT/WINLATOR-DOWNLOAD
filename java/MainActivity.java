@@ -34,6 +34,7 @@ import com.google.android.material.color.DynamicColors;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 import com.winlator.Download.model.Release;
+import com.winlator.Download.IpfsGamesFragment;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -276,9 +277,11 @@ public class MainActivity extends AppCompatActivity {
         public CharSequence getPageTitle(int position) {
             if (position == 0) {
                 return "Jogos da Comunidade";
+            } else if (position == 1) {
+                return "IPFS Games";
             } else {
-                if (position -1 < categories.size()) {
-                    return categories.get(position - 1);
+                if (position - 2 < categories.size()) {
+                    return categories.get(position - 2);
                 }
                 return ""; // Should not happen if getItemCount is correct
             }
@@ -289,9 +292,11 @@ public class MainActivity extends AppCompatActivity {
         public Fragment createFragment(int position) {
             if (position == 0) {
                 return new CommunityGamesFragment();
+            } else if (position == 1) {
+                return new IpfsGamesFragment();
             } else {
-                if (position - 1 < categories.size()) {
-                    String category = categories.get(position - 1);
+                if (position - 2 < categories.size()) {
+                    String category = categories.get(position - 2);
                     List<Release> categoryReleases = data.get(category);
                     if (categoryReleases == null) { // Should not happen if data is consistent
                         categoryReleases = new ArrayList<>();
@@ -305,7 +310,7 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public int getItemCount() {
-            return categories.size() + 1; // +1 for CommunityGamesFragment
+            return categories.size() + 2; // +2 for CommunityGamesFragment and IpfsGamesFragment
         }
     }
 

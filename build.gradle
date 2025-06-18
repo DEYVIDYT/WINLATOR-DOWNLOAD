@@ -1,0 +1,28 @@
+// Placeholder build.gradle - Essential configurations are missing!
+// You will need to merge this with your project's actual build.gradle.
+
+apply plugin: 'com.android.application' // Assuming this is an application module
+
+android {
+    compileSdkVersion 33 // Example: Use your project's SDK version
+    defaultConfig {
+        applicationId "com.winlator.Download" // Example: Use your project's application ID
+        minSdkVersion 21    // Example: Use your project's min SDK version
+        targetSdkVersion 33 // Example: Use your project's target SDK version
+        versionCode 1
+        versionName "1.0"
+    }
+    // Add other necessary configurations like buildToolsVersion, buildTypes, etc.
+}
+
+dependencies {
+    implementation 'com.github.ipfs:java-ipfs-http-client:1.3.3' // Or latest version
+    // Add any other dependencies your project currently has,
+    // especially AndroidX libraries, Material Components, etc.
+    // For example (you might need different versions or more libraries):
+    implementation 'androidx.appcompat:appcompat:1.3.0'
+    implementation 'com.google.android.material:material:1.4.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
+    implementation 'androidx.fragment:fragment-ktx:1.3.6' // For Fragment specific features
+     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+}

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="?android:attr/selectableItemBackground">
+
+    <TextView
+        android:id="@+id/tv_ipfs_game_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:textColor="?android:attr/textColorPrimary"
+        android:text="Game Name"/>
+
+    <TextView
+        android:id="@+id/tv_ipfs_hash"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:text="IPFS Hash: CID_HERE"
+        android:layout_marginTop="4dp"/>
+
+    <TextView
+        android:id="@+id/tv_ipfs_original_filename"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:text="Filename: original_filename.zip"
+        android:layout_marginTop="2dp"/>
+
+    <TextView
+        android:id="@+id/tv_ipfs_file_size"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:text="Size: 100 MB"
+        android:layout_marginTop="2dp"/>
+
+    <TextView
+        android:id="@+id/tv_ipfs_upload_timestamp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="12sp"
+        android:textColor="?android:attr/textColorTertiary"
+        android:text="Uploaded: 2023-01-01 12:00:00"
+        android:layout_marginTop="4dp"/>
+
+    <!-- Button for download - to be implemented in Step 6 -->
+    <Button
+        android:id="@+id/btn_download_ipfs_game"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Download"
+        android:layout_marginTop="8dp"/>
+
+</LinearLayout>
