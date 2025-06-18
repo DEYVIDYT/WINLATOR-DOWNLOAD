@@ -93,11 +93,22 @@ public class UploadService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
             String gameName = intent.getStringExtra("game_name");
-            String gameLink = intent.getStringExtra("game_link");
+            String gameLinkFromIntent = intent.getStringExtra("game_link"); // Direct link
+            String infoHash = intent.getStringExtra("info_hash"); // Torrent info hash
             long gameSizeBytes = intent.getLongExtra("game_size_bytes", 0);
-            String fileUriString = null; // Assuming file URI is not passed for link-based uploads
-            String fileName = gameName; // Using gameName as fileName for now
+            String fileUriString = null; // Assuming file URI is not passed for link-based/torrent uploads to this service
+            String fileName = intent.getStringExtra("file_name"); // filename from torrent or user input
+            if (fileName == null || fileName.isEmpty()) {
+                 fileName = gameName; // Fallback to gameName if fileName is not provided
+            }
+            // New extras for torrent seeding
+            final String torrentFilePath = intent.getStringExtra("torrent_file_path"); // Path to the .torrent file
+            final String savePathUriString = intent.getStringExtra("save_path_uri"); // URI for the game data directory
+
             int uploadId = intent.getIntExtra("upload_id", -1);
+
+            // Determine the effective link/identifier for UploadStatus
+            String effectiveLink = (infoHash != null && !infoHash.isEmpty()) ? infoHash : gameLinkFromIntent;
 
             String currentProcessGameName = gameName;
             if (currentProcessGameName == null || currentProcessGameName.isEmpty()) {
@@ -107,7 +118,7 @@ public class UploadService extends Service {
             // Use a more generic "fileName" for UploadStatus if gameLink doesn't imply one.
             // For this iteration, we'll use gameName as a placeholder for fileName if a distinct one isn't derived.
             // The UploadStatus constructor will need to be adapted if its 'fileName' field is critical and different from gameName.
-            // Assuming UploadStatus will be updated to take gameLink and gameSizeBytes
+            // Assuming UploadStatus will be updated to take effectiveLink (info_hash or game_link) and gameSizeBytes
             // and that its internal 'fileName' might be derived or set to gameName.
 
             Notification preparingNotification = createNotification("Preparando " + currentProcessGameName + "...", 0);
@@ -119,7 +130,7 @@ public class UploadService extends Service {
                     uploadStatus = uploadRepository.getUploadById(uploadId);
                     if (uploadStatus == null) {
                         Log.e("UploadService", "UploadStatus com ID " + uploadId + " não encontrado. Iniciando novo upload.");
-                        uploadStatus = new UploadStatus(gameName, fileName, gameSizeBytes, fileUriString, gameLink);
+                        uploadStatus = new UploadStatus(gameName, fileName, gameSizeBytes, fileUriString, effectiveLink);
                         // Set id after insertion for new UploadStatus object
                         long newId = uploadRepository.insertUpload(uploadStatus);
                         uploadStatus.setId((int) newId);
@@ -127,7 +138,7 @@ public class UploadService extends Service {
                         if (uploadStatus.getStatus() == UploadStatus.Status.PAUSED || uploadStatus.getStatus() == UploadStatus.Status.ERROR) {
                             uploadStatus.setStatus(UploadStatus.Status.UPLOADING);
                             uploadStatus.setFileSize(gameSizeBytes); // User might have changed this for a retry
-                            uploadStatus.setGameLink(gameLink);
+                            uploadStatus.setGameLink(effectiveLink); // Update with new link/info_hash
                             uploadStatus.setFileUri(fileUriString);
                             // Reset progress for resume, or let UploadService manage it based on actual uploaded bytes if resumable links were a thing
                             uploadStatus.setProgress(0);
@@ -139,7 +150,7 @@ public class UploadService extends Service {
                         // For now, we assume if it's an existing ID, we primarily care about PAUSED/ERROR states for restart.
                     }
                 } else {
-                    uploadStatus = new UploadStatus(gameName, fileName, gameSizeBytes, fileUriString, gameLink);
+                    uploadStatus = new UploadStatus(gameName, fileName, gameSizeBytes, fileUriString, effectiveLink);
                     long newId = uploadRepository.insertUpload(uploadStatus);
                     uploadStatus.setId((int) newId);
                 }
@@ -166,19 +177,36 @@ public class UploadService extends Service {
     }
 
     private void uploadGame(UploadStatus uploadStatus) {
-        updateNotification("Validando link para " + uploadStatus.getGameName() + "...", 10);
+        String effectiveLink = uploadStatus.getGameLink(); // This now holds either game link or info_hash
+        boolean isTorrentUpload = false;
+        // A simple heuristic: if it's a 40-char hex string, it's likely an info_hash.
+        // A more robust way would be to have a dedicated field in UploadStatus or check a flag passed in onStartCommand.
+        if (effectiveLink != null && effectiveLink.matches("^[a-fA-F0-9]{40}$")) {
+            isTorrentUpload = true;
+        }
+
+        if (isTorrentUpload) {
+            updateNotification("Registrando torrent para " + uploadStatus.getGameName() + "...", 10);
+        } else {
+            updateNotification("Validando link para " + uploadStatus.getGameName() + "...", 10);
+        }
         uploadStatus.setProgress(10); // Keep status object updated
         sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus, null);
 
-        if (!isValidGameLink(uploadStatus.getGameLink())) {
-            String errorMsg = "Link do jogo inválido ou não permitido: " + uploadStatus.getGameLink();
-            Log.e("UploadService", errorMsg);
-            handleError(uploadStatus, errorMsg); // handleError will update status and call sendUploadBroadcast
-            stopSelfIfNeeded();
-            return;
+        if (!isTorrentUpload) { // Only validate if it's not a torrent upload (i.e., it's an actual URL)
+            if (!isValidGameLink(effectiveLink)) {
+                String errorMsg = "Link do jogo inválido ou não permitido: " + effectiveLink;
+                Log.e("UploadService", errorMsg);
+                handleError(uploadStatus, errorMsg); // handleError will update status and call sendUploadBroadcast
+                stopSelfIfNeeded();
+                return;
+            }
         }
 
-        updateNotification("Registrando " + uploadStatus.getGameName() + " com o servidor...", 50);
+        String registrationMessage = isTorrentUpload ?
+            "Registrando torrent " + uploadStatus.getGameName() + " com o servidor..." :
+            "Registrando " + uploadStatus.getGameName() + " com o servidor...";
+        updateNotification(registrationMessage, 50);
         uploadStatus.setProgress(50); // Keep status object updated
         sendUploadBroadcast(ACTION_UPLOAD_PROGRESS, uploadStatus, null);
 
@@ -197,7 +225,8 @@ public class UploadService extends Service {
             JSONObject jsonData = new JSONObject();
             jsonData.put("name", uploadStatus.getGameName());
             jsonData.put("size", formatFileSize(uploadStatus.getFileSize()));
-            jsonData.put("url", uploadStatus.getGameLink()); // Get gameLink from UploadStatus
+            // uploadStatus.getGameLink() will contain info_hash for torrents, or URL for direct links
+            jsonData.put("url", uploadStatus.getGameLink());
 
             URL url = new URL("https://ldgames.x10.mx/add_update_game.php");
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
@@ -228,6 +257,32 @@ public class UploadService extends Service {
                     uploadStatus.setUploadedBytes(uploadStatus.getFileSize()); // Mark as fully "uploaded"
                     uploadRepository.updateUpload(uploadStatus);
                     sendUploadBroadcast(ACTION_UPLOAD_COMPLETED, uploadStatus, null);
+
+                    // After successful upload, if it was a torrent, start seeding service
+                    if (infoHash != null && !infoHash.isEmpty() && torrentFilePath != null && savePathUriString != null) {
+                        Log.d("UploadService", "API upload successful, starting TorrentSeedingService.");
+                        Intent seedingIntent = new Intent(this, TorrentSeedingService.class);
+                        seedingIntent.setAction(TorrentSeedingService.ACTION_START_SEEDING);
+                        seedingIntent.putExtra(TorrentSeedingService.EXTRA_TORRENT_FILE_PATH, torrentFilePath);
+
+                        // IMPORTANT: Converting savePathUriString (content URI) to a usable file path.
+                        // This is a placeholder and might require robust implementation.
+                        // For simplicity, assuming direct path might be derivable or TorrentSeedingService handles content URI.
+                        // If DocumentFile is needed:
+                        // Uri treeUri = Uri.parse(savePathUriString);
+                        // DocumentFile documentFile = DocumentFile.fromTreeUri(this, treeUri);
+                        // String actualSavePath = getPathFromDocumentFile(documentFile); // This helper needs to be implemented
+                        // For now, passing the URI string, TorrentSeedingService might need to resolve it.
+                        // A more direct approach if a helper like getPathFromDocumentFile isn't available or complex:
+                        // The TorrentSeedingService might need to handle content URIs if direct paths are not possible.
+                        // Let's assume for now that the savePathUriString is something TorrentSeedingService can use,
+                        // or it's a file path already (less likely for ACTION_OPEN_DOCUMENT_TREE).
+                        // For this subtask, we'll pass the URI string and note that TorrentSeedingService may need to resolve it.
+                        seedingIntent.putExtra(TorrentSeedingService.EXTRA_SAVE_PATH, savePathUriString); // Passing URI string
+
+                        ContextCompat.startForegroundService(this, seedingIntent);
+                    }
+
                 } else {
                     String error = "Erro da API ao registrar " + uploadStatus.getGameName() + ": " + responseJson.getString("message");
                     handleError(uploadStatus, error);
@@ -242,6 +297,8 @@ public class UploadService extends Service {
             String error = "Exceção na API para " + uploadStatus.getGameName() + ": " + e.getMessage();
             handleError(uploadStatus, error);
         }
+        // stopSelfIfNeeded(); // Moved to be called after potential seeding service start
+        // Only stop this service if it's done its part. Seeding service runs independently.
         stopSelfIfNeeded();
     }
 

@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    compileSdkVersion 33
+    defaultConfig {
+        applicationId "com.winlator.download"
+        minSdkVersion 21
+        targetSdkVersion 33
+        versionCode 1
+        versionName "1.0"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    sourceSets {
+        main {
+            manifest.srcFile '../AndroidManifest.xml' // Corrected manifest filename
+            // java.srcDirs defaults to ['src/main/java'] which should now be correct
+            res.srcDirs = ['../resource']           // Points to the root resource dir
+        }
+    }
+}
+
+dependencies {
+    implementation 'com.frostwire:jlibtorrent:1.2.19.0'
+    implementation 'com.frostwire:jlibtorrent-android-arm:1.2.19.0'
+    implementation 'com.frostwire:jlibtorrent-android-arm64:1.2.19.0'
+    implementation 'com.frostwire:jlibtorrent-android-x86:1.2.19.0'
+    implementation 'com.frostwire:jlibtorrent-android-x86_64:1.2.19.0'
+
+    // Add other common dependencies here if needed, for example:
+    // implementation 'androidx.appcompat:appcompat:1.6.1'
+    // implementation 'com.google.android.material:material:1.9.0'
+}
