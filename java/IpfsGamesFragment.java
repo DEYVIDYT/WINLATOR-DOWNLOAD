@@ -56,8 +56,9 @@ import java.util.concurrent.Executors;
 import org.json.JSONObject; // For parsing JSON response
 
 import io.ipfs.api.IPFS;
+import io.ipfs.api.MerkleNode; // Ensure MerkleNode is imported
 import io.ipfs.api.NamedStreamable;
-import io.ipfs.multihash.Multihash; // Correct import for Multihash
+// import io.ipfs.multihash.Multihash; // Removed
 
 public class IpfsGamesFragment extends Fragment implements IpfsGamesAdapter.OnIpfsGameAction { // Implement interface
 
@@ -193,12 +194,13 @@ public class IpfsGamesFragment extends Fragment implements IpfsGamesAdapter.OnIp
 
         ipfsExecutor.execute(() -> {
             try {
-                byte[] fileContents = ipfs.cat(Multihash.fromBase58(game.getIpfsHash()));
+                byte[] fileContents = ipfs.cat(game.getIpfsHash()); // Use String CID overload
 
                 if (fileContents == null || fileContents.length == 0) {
-                    getActivity().runOnUiThread(() ->
-                        Toast.makeText(getContext(), "Failed to download: File is empty or not found on IPFS.", Toast.LENGTH_LONG).show()
-                    );
+                    if (getActivity() != null) getActivity().runOnUiThread(() -> { // Added null check for getActivity
+                        if (getContext() != null) // Added null check for getContext
+                           Toast.makeText(getContext(), "Failed to download: File is empty or not found on IPFS.", Toast.LENGTH_LONG).show();
+                    });
                     return;
                 }
 
@@ -208,8 +210,9 @@ public class IpfsGamesFragment extends Fragment implements IpfsGamesAdapter.OnIp
                 }
 
                 // Notify user of success on UI thread
-                getActivity().runOnUiThread(() -> {
-                    Toast.makeText(getContext(), game.getGameName() + " downloaded successfully to Downloads folder.", Toast.LENGTH_LONG).show();
+                if (getActivity() != null) getActivity().runOnUiThread(() -> { // Added null check
+                    if (getContext() != null) // Added null check
+                        Toast.makeText(getContext(), game.getGameName() + " downloaded successfully to Downloads folder.", Toast.LENGTH_LONG).show();
                     Log.d("IpfsGamesFragment", "File downloaded: " + destinationFile.getAbsolutePath());
                     // Optionally, send a broadcast to make the file visible to MediaScanner
                     // Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
@@ -220,9 +223,10 @@ public class IpfsGamesFragment extends Fragment implements IpfsGamesAdapter.OnIp
             } catch (IOException e) {
                 Log.e("IpfsGamesFragment", "File writing failed for " + game.getIpfsHash(), e);
                 final String errorMsg = e.getMessage();
-                getActivity().runOnUiThread(() ->
-                    Toast.makeText(getContext(), "Download failed (File I/O Error): " + errorMsg, Toast.LENGTH_LONG).show()
-                );
+                if (getActivity() != null) getActivity().runOnUiThread(() -> { // Added null check
+                    if (getContext() != null) // Added null check
+                        Toast.makeText(getContext(), "Download failed (File I/O Error): " + errorMsg, Toast.LENGTH_LONG).show();
+                });
             } catch (Exception e) { // Catch other exceptions like IPFS client errors, Multihash format errors
                 Log.e("IpfsGamesFragment", "IPFS download failed for " + game.getIpfsHash(), e);
                 final String errorMsg = e.getMessage();
@@ -338,38 +342,45 @@ public class IpfsGamesFragment extends Fragment implements IpfsGamesAdapter.OnIp
                 byte[] fileBytes = buffer.toByteArray();
 
                 NamedStreamable.ByteArrayWrapper fileWrapper = new NamedStreamable.ByteArrayWrapper(originalFileName, fileBytes);
-                List<Multihash> result = ipfs.add(fileWrapper, true, false);
+                List<io.ipfs.api.MerkleNode> result = ipfs.add(fileWrapper, true, false); // ipfs.add returns List<MerkleNode>
 
                 if (result != null && !result.isEmpty()) {
-                    Multihash fileHash = result.get(result.size() - 1); // Often the last one if wrapped
-                    String cid = fileHash.toBase58();
-                    long fileSize = fileBytes.length; // ensure fileSize is captured
+                    // If wrapWithDirectory (true) is used, the actual file hash might be the last one,
+                    // or you might get a hash for the directory and another for the file.
+                    // For a single file, typically the first hash if not wrapped, or the specific file's hash.
+                    // Let's assume the relevant hash is the last one if wrapped.
+                    io.ipfs.api.MerkleNode node = result.get(result.size() - 1);
+                    if (node != null && node.hash != null) {
+                        String cid = node.hash.toBase58(); // This line might still fail if Multihash type is unresolvable for 'node.hash'
+                        long fileSize = fileBytes.length;
 
-                    // NOW, call the new dialog method:
-                    final String finalCid = cid; // Variables used in lambda should be final or effectively final
-                    final String finalOriginalFileName = originalFileName;
-                    final long finalFileSize = fileSize;
-                    if (getActivity() != null) {
-                        getActivity().runOnUiThread(() -> promptForGameName(finalCid, finalOriginalFileName, finalFileSize));
-                    }
-                } else {
-                    if (getActivity() != null) {
-                        getActivity().runOnUiThread(() -> {
-                            if (getContext() != null) Toast.makeText(getContext(), "IPFS upload failed. No hash returned.", Toast.LENGTH_SHORT).show();
+                        if (getActivity() != null) getActivity().runOnUiThread(() -> { // Added null check
+                            if (getContext() != null) Toast.makeText(getContext(), "File uploaded! CID: " + cid, Toast.LENGTH_LONG).show();
+                            Log.d("IpfsGamesFragment", "IPFS CID: " + cid + ", File: " + originalFileName + ", Size: " + fileSize);
+                            final String finalCid = cid;
+                            final String finalOriginalFileName = originalFileName;
+                            final long finalFileSize = fileSize;
+                            promptForGameName(finalCid, finalOriginalFileName, finalFileSize);
+                        });
+                    } else {
+                         if (getActivity() != null) getActivity().runOnUiThread(() -> { // Added null check
+                            if (getContext() != null) Toast.makeText(getContext(), "IPFS upload result incomplete (node or hash is null).", Toast.LENGTH_SHORT).show();
                         });
                     }
+                } else {
+                    if (getActivity() != null) getActivity().runOnUiThread(() -> { // Added null check
+                        if (getContext() != null) Toast.makeText(getContext(), "IPFS upload failed. No result returned.", Toast.LENGTH_SHORT).show();
+                    });
                 }
 
             } catch (IOException e) {
                 Log.e("IpfsGamesFragment", "IPFS upload IO failed", e);
-                if (getActivity() != null) {
-                    getActivity().runOnUiThread(() -> {
-                        if (getContext() != null) Toast.makeText(getContext(), "IPFS upload error (IO): " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    });
-                }
+                if (getActivity() != null) getActivity().runOnUiThread(() -> { // Added null check
+                    if (getContext() != null) Toast.makeText(getContext(), "IPFS upload error (IO): " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
             } catch (Exception e) {
                 Log.e("IpfsGamesFragment", "IPFS client error or other exception during upload", e);
-                if (getActivity() != null) getActivity().runOnUiThread(() -> {
+                if (getActivity() != null) getActivity().runOnUiThread(() -> { // Added null check
                     if (getContext() != null) Toast.makeText(getContext(), "IPFS client/general error: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 });
             } finally {
@@ -452,7 +463,7 @@ public class IpfsGamesFragment extends Fragment implements IpfsGamesAdapter.OnIp
         }
 
         ipfsExecutor.execute(() -> {
-            String backendUrl = "https://ldgames.x10.mx/add_ipfs_game.php";
+            String backendUrl = "https://ldgames.x10.mx/manage_ipfs_data.php"; // New PHP script
             HttpURLConnection conn = null;
             try {
                 URL url = new URL(backendUrl);
@@ -461,8 +472,10 @@ public class IpfsGamesFragment extends Fragment implements IpfsGamesAdapter.OnIp
                 conn.setDoOutput(true);
                 conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
 
+                // Build POST data
                 StringBuilder postData = new StringBuilder();
-                postData.append("game_name=").append(URLEncoder.encode(gameName, StandardCharsets.UTF_8.name()));
+                postData.append("action=add"); // Add action parameter
+                postData.append("&game_name=").append(URLEncoder.encode(gameName, StandardCharsets.UTF_8.name()));
                 postData.append("&ipfs_hash=").append(URLEncoder.encode(cid, StandardCharsets.UTF_8.name()));
                 postData.append("&original_filename=").append(URLEncoder.encode(originalFileName, StandardCharsets.UTF_8.name()));
                 postData.append("&file_size=").append(fileSize);
@@ -554,7 +567,8 @@ public class IpfsGamesFragment extends Fragment implements IpfsGamesAdapter.OnIp
         if (swipeRefreshLayoutIpfs != null) swipeRefreshLayoutIpfs.setRefreshing(true);
 
         ipfsExecutor.execute(() -> {
-            String backendUrl = "https://ldgames.x10.mx/list_ipfs_games.php";
+            // Old: String backendUrl = "https://ldgames.x10.mx/list_ipfs_games.php";
+            String backendUrl = "https://ldgames.x10.mx/manage_ipfs_data.php?action=list"; // New PHP script with action
             HttpURLConnection conn = null;
             try {
                 URL url = new URL(backendUrl);
