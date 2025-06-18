@@ -45,6 +45,7 @@ import java.util.concurrent.Executors;
 
 public class UploadService extends Service {
 
+    private static final String NEW_UPDATER_SERVICE_URL = "https://your-chosen-deployment.com/api/update-games"; // Placeholder - User must replace this
     private static final String CHANNEL_ID = "upload_channel";
     private static final int NOTIFICATION_ID = 1001;
     public static final String ACTION_UPLOAD_STARTED = "com.winlator.Download.UPLOAD_STARTED";
@@ -199,7 +200,7 @@ public class UploadService extends Service {
             jsonData.put("size", formatFileSize(uploadStatus.getFileSize()));
             jsonData.put("url", uploadStatus.getGameLink()); // Get gameLink from UploadStatus
 
-            URL url = new URL("https://ldgames.x10.mx/add_update_game.php");
+            URL url = new URL(NEW_UPDATER_SERVICE_URL);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type", "application/json");

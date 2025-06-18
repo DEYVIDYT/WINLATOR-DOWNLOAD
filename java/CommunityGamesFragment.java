@@ -55,6 +55,9 @@ import java.util.concurrent.Executors;
 
 public class CommunityGamesFragment extends Fragment {
 
+    private static final String IPFS_GATEWAY = "https://ipfs.io"; // Or user's preferred gateway
+    private static final String IPNS_NAME = "k51qzi5uqu5dlv4x9v7x9x9x9x9x9x9x9x9x9x9x9x9x9x9x9x9x9x9x9x9x9x9x9x"; // Placeholder - User must replace this with their actual IPNS Name
+
     // private static final int PICK_FILE_REQUEST = 1001; // Removed
     
     private RecyclerView recyclerView;
@@ -408,7 +411,7 @@ public class CommunityGamesFragment extends Fragment {
     private void loadCommunityGames() {
         executor.execute(() -> {
             try {
-                URL url = new URL("https://ldgames.x10.mx/list_games.php");
+                URL url = new URL(IPFS_GATEWAY + "/ipns/" + IPNS_NAME);
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(10000);
