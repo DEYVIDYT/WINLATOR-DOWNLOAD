@@ -573,26 +573,35 @@ public class DownloadService extends Service {
         final String gofileContentId = intent.getStringExtra(EXTRA_GOFILE_CONTENT_ID);
 
         // ... (URL/FileName validation from existing handleStartDownload) ...
+
+    // Declare a single notification ID for these transient notifications.
+    // It will be used for "invalid params" or "preparing" notifications,
+    // which are temporary and replaced by download-specific notifications or cancelled.
+    final int TRANSIENT_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1;
+
         if (urlString == null || urlString.trim().isEmpty() || fileName == null || fileName.trim().isEmpty() || !URLUtil.isValidUrl(urlString)) {
             Log.e(TAG, "handleStartDownload: Invalid or missing URL/FileName. URL: '" + urlString + "', FileName: '" + fileName + "'. Stopping service or not queueing.");
-            // ... (existing notification and stopSelf logic for invalid parameters) ...
-            final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1;
-            Notification invalidRequestNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
+
+        String errorReason = URLUtil.isValidUrl(urlString) ? "Pedido de download inválido." : "URL de download inválida.";
+        Notification invalidParamsNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_cancel)
                 .setContentTitle("Download Falhou")
-                .setContentText(URLUtil.isValidUrl(urlString) ? "Pedido de download inválido." : "URL de download inválida.")
+            .setContentText(errorReason)
                 .setAutoCancel(true)
                 .build();
-            startForeground(PREPARING_NOTIFICATION_ID, invalidRequestNotification);
-            stopSelf();
+        // Use the single ID for this transient notification
+        startForeground(TRANSIENT_NOTIFICATION_ID, invalidParamsNotification);
+        stopSelf(); // Stop the service as it cannot proceed.
             return;
         }
-        // If parameters are valid, we show "Preparing" then decide to queue or start.
-        final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1;
+
+    // If parameters are valid, show the "Preparing download..." notification
+    // This uses the same TRANSIENT_NOTIFICATION_ID, as it will be cancelled by prepareAndStartDownload
+    // or by a specific download's notification.
         Notification preparingNotification = createPreparingNotification(fileName);
-        startForeground(PREPARING_NOTIFICATION_ID, preparingNotification);
+    startForeground(TRANSIENT_NOTIFICATION_ID, preparingNotification);
 
-
+    // The rest of the method (synchronized block and call to prepareAndStartDownload) remains the same
         synchronized (queueLock) {
             // Use the member variable maxConcurrentDownloads
             if (activeDownloads.size() >= maxConcurrentDownloads) {
@@ -618,16 +627,19 @@ public class DownloadService extends Service {
             executor = Executors.newSingleThreadExecutor();
         }
         // Remove the PREPARING_NOTIFICATION_ID once actual processing starts
-        // This is done inside prepareAndStartDownload now.
+    // The TRANSIENT_NOTIFICATION_ID (showing "Preparing...") will be cancelled
+    // by the logic within prepareAndStartDownload.
         executor.execute(() -> prepareAndStartDownload(urlString, fileName, authToken, gofileContentId, intent));
     }
 
-    // New method to encapsulate the logic previously in executor.execute() within handleStartDownload
+// Ensure prepareAndStartDownload cancels the TRANSIENT_NOTIFICATION_ID
     private void prepareAndStartDownload(String urlString, String fileName, String authToken, String gofileContentId, Intent originalIntent) {
-        final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1; // Same as in handleStartDownload
+    // Use the same ID that handleStartDownload used for the "Preparing..." notification
+    final int PREPARING_NOTIFICATION_ID_TO_CANCEL = NOTIFICATION_ID_BASE - 1;
 
         Log.d(TAG, "prepareAndStartDownload (Executor): Processing URL: '" + urlString + "', InputFileName: '" + fileName + "', GofileContentID: '" + gofileContentId + "'");
 
+    // ... (rest of the path creation logic) ...
         File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this));
         File targetFile;
 
@@ -643,13 +655,17 @@ public class DownloadService extends Service {
             if (!parentDirFile.mkdirs()) {
                 Log.e(TAG, "prepareAndStartDownload (Executor): Failed to create parent directory: " + parentDirFile.getAbsolutePath() + ". Aborting.");
                 new Handler(Looper.getMainLooper()).post(() -> {
-                    if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+                // Cancel the "Preparing..." notification
+                if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID_TO_CANCEL);
                     Toast.makeText(DownloadService.this, "Erro ao criar diretório para download.", Toast.LENGTH_SHORT).show();
-                    checkAndDequeue(); // Try to start next if this one failed early
+                checkAndDequeue();
                 });
                 return;
             }
         }
+    // ... (rest of the checks for existing tasks, DB entries etc.) ...
+    // Make sure the mainHandler.post block also cancels the PREPARING_NOTIFICATION_ID_TO_CANCEL
+    // before starting a new download's specific notification or showing a toast for existing download.
 
         final String finalLocalPath = targetFile.getAbsolutePath();
         final String actualDisplayFileName = targetFile.getName();
@@ -658,9 +674,10 @@ public class DownloadService extends Service {
             if (existingTask.localPath != null && existingTask.localPath.equals(finalLocalPath)) {
                 Log.i(TAG, "Download task for " + finalLocalPath + " already active (checked in prepareAndStartDownload).");
                 new Handler(Looper.getMainLooper()).post(() -> {
-                    if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+                // Cancel the "Preparing..." notification
+                if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID_TO_CANCEL);
                     Toast.makeText(DownloadService.this, actualDisplayFileName + " já está sendo baixado.", Toast.LENGTH_SHORT).show();
-                    checkAndDequeue(); // This task isn't new, so check queue
+                 checkAndDequeue();
                 });
                 return;
             }
@@ -669,12 +686,12 @@ public class DownloadService extends Service {
         long downloadId = getDownloadIdByLocalPath(finalLocalPath);
         Log.d(TAG, "prepareAndStartDownload (Executor): getDownloadIdByLocalPath for '" + finalLocalPath + "' returned ID: " + downloadId);
 
-        // This handler post is tricky because the logic inside it might return early.
-        // We need to ensure checkAndDequeue is called if this path doesn't lead to a new DownloadTask.
         final Handler mainHandler = new Handler(Looper.getMainLooper());
         mainHandler.post(() -> {
-            if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-            long effectiveDownloadId = downloadId; // Use a new variable for ID within lambda
+        // Cancel the "Preparing..." notification as we are now handling this download specifically.
+        if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID_TO_CANCEL);
+
+        long effectiveDownloadId = downloadId;
 
             if (effectiveDownloadId != -1) {
                 Download existingDownload = getDownloadById(effectiveDownloadId);
