@@ -5,13 +5,10 @@ import android.content.pm.PackageManager;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
+// import androidx.appcompat.app.AlertDialog; // Using MaterialAlertDialogBuilder
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
-// FragmentManager and FragmentTransaction are not directly used for ViewPager2 adapter logic here
-// import androidx.fragment.app.FragmentManager;
-// import androidx.fragment.app.FragmentTransaction;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
 
@@ -35,9 +32,16 @@ import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 import com.winlator.Download.model.Release;
 
-// Import new fragments
-import com.winlator.Download.CommunityTestFragment;
-import com.winlator.Download.CommunityFixFragment;
+// Remove direct imports of individual community fragments from here,
+// as they will be managed by CommunityHubFragment.
+// import com.winlator.Download.CommunityGamesFragment; // No longer directly used by this adapter
+// import com.winlator.Download.CommunityTestFragment;  // No longer directly used by this adapter
+// import com.winlator.Download.CommunityFixFragment;   // No longer directly used by this adapter
+
+// Import for the new CommunityHubFragment (will be created in a subsequent step)
+// For now, this will cause a compile error until CommunityHubFragment is created.
+// We will proceed assuming it will be created.
+// import com.winlator.Download.CommunityHubFragment;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -60,7 +64,6 @@ public class MainActivity extends AppCompatActivity {
     private TabLayout tabLayout;
     private ViewPager2 viewPager;
     private MyPagerAdapter pagerAdapter;
-    // apiData is used by FetchApiDataTask and passed to the adapter for dynamic tabs
     private Map<String, List<Release>> apiData = new LinkedHashMap<>();
     private ProgressBar progressBar;
     private TextView errorTextView;
@@ -69,12 +72,9 @@ public class MainActivity extends AppCompatActivity {
     private static final String API_URL = "https://raw.githubusercontent.com/DEYVIDYT/WINLATOR-DOWNLOAD/refs/heads/main/WINLATOR.json";
     private static final int STORAGE_PERMISSION_CODE = 101;
 
-    // Constants for tab positions for clarity
-    private static final int COMMUNITY_GAMES_POS = 0;
-    private static final int COMMUNITY_TESTS_POS = 1;
-    private static final int COMMUNITY_FIXES_POS = 2;
-    private static final int DYNAMIC_TABS_START_POS = 3;
-
+    // Updated Tab Position Constants
+    private static final int COMMUNITY_HUB_POS = 0; // Single "Community" tab
+    private static final int DYNAMIC_TABS_START_POS = 1; // Dynamic tabs start after "Community"
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -90,7 +90,7 @@ public class MainActivity extends AppCompatActivity {
         progressBar = findViewById(R.id.progressBar);
         errorTextView = findViewById(R.id.errorTextView);
 
-        apiData = new LinkedHashMap<>(); // Initialize
+        apiData = new LinkedHashMap<>();
 
         pagerAdapter = new MyPagerAdapter(this);
         viewPager.setAdapter(pagerAdapter);
@@ -113,7 +113,10 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private boolean checkStoragePermissions() {
+    // checkStoragePermissions, requestStoragePermissions, onRequestPermissionsResult, showPermissionDeniedDialog,
+    // onCreateOptionsMenu, onOptionsItemSelected remain the same.
+
+        private boolean checkStoragePermissions() {
         boolean readGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
         if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) {
             boolean writeGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
@@ -195,7 +198,7 @@ public class MainActivity extends AppCompatActivity {
         if (itemId == R.id.action_downloads) {
             startActivity(new Intent(this, DownloadManagerActivity.class));
             return true;
-        } else if (itemId == R.id.action_community_games) { // This seems to go to SettingsActivity
+        } else if (itemId == R.id.action_community_games) {
             startActivity(new Intent(this, SettingsActivity.class));
             return true;
         } else if (itemId == R.id.action_upload_monitor) {
@@ -206,14 +209,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private static class MyPagerAdapter extends FragmentStateAdapter {
-        private Map<String, List<Release>> dynamicData; // Renamed for clarity
-        private List<String> dynamicCategories; // Renamed for clarity
+        private Map<String, List<Release>> dynamicData;
+        private List<String> dynamicCategories;
 
-        // Titles for static tabs
-        private static final String TITLE_COMMUNITY_GAMES = "Jogos da Comunidade";
-        private static final String TITLE_COMMUNITY_TESTS = "Testes da Comunidade";
-        private static final String TITLE_COMMUNITY_FIXES = "Fixes da Comunidade";
-
+        private static final String TITLE_COMMUNITY_HUB = "Comunidade";
 
         public MyPagerAdapter(AppCompatActivity activity) {
             super(activity);
@@ -232,59 +231,53 @@ public class MainActivity extends AppCompatActivity {
         }
 
         public CharSequence getPageTitle(int position) {
-            switch (position) {
-                case COMMUNITY_GAMES_POS:
-                    return TITLE_COMMUNITY_GAMES;
-                case COMMUNITY_TESTS_POS:
-                    return TITLE_COMMUNITY_TESTS;
-                case COMMUNITY_FIXES_POS:
-                    return TITLE_COMMUNITY_FIXES;
-                default:
-                    int dynamicIndex = position - DYNAMIC_TABS_START_POS;
-                    if (dynamicIndex >= 0 && dynamicIndex < dynamicCategories.size()) {
-                        return dynamicCategories.get(dynamicIndex);
-                    }
-                    return ""; // Fallback
+            if (position == COMMUNITY_HUB_POS) {
+                return TITLE_COMMUNITY_HUB;
+            } else {
+                int dynamicIndex = position - DYNAMIC_TABS_START_POS;
+                if (dynamicIndex >= 0 && dynamicIndex < dynamicCategories.size()) {
+                    return dynamicCategories.get(dynamicIndex);
+                }
+                return "";
             }
         }
 
         @Override
         public Fragment createFragment(int position) {
-            switch (position) {
-                case COMMUNITY_GAMES_POS:
-                    return new CommunityGamesFragment();
-                case COMMUNITY_TESTS_POS:
-                    return new CommunityTestFragment();
-                case COMMUNITY_FIXES_POS:
-                    return new CommunityFixFragment();
-                default:
-                    int dynamicIndex = position - DYNAMIC_TABS_START_POS;
-                    if (dynamicIndex >= 0 && dynamicIndex < dynamicCategories.size()) {
-                        String category = dynamicCategories.get(dynamicIndex);
-                        List<Release> categoryReleases = dynamicData.get(category);
-                        if (categoryReleases == null) {
-                            categoryReleases = new ArrayList<>();
-                        }
-                        return ReleasesFragment.newInstance(category, categoryReleases);
+            if (position == COMMUNITY_HUB_POS) {
+                // This will require CommunityHubFragment to be created.
+                // If it's not available, this line will cause a compilation error.
+                // For the purpose of this subtask, we assume it will be created.
+                return new com.winlator.Download.CommunityHubFragment();
+            } else {
+                int dynamicIndex = position - DYNAMIC_TABS_START_POS;
+                if (dynamicIndex >= 0 && dynamicIndex < dynamicCategories.size()) {
+                    String category = dynamicCategories.get(dynamicIndex);
+                    List<Release> categoryReleases = dynamicData.get(category);
+                    if (categoryReleases == null) {
+                        categoryReleases = new ArrayList<>();
                     }
-                    return new Fragment(); // Fallback
+                    return ReleasesFragment.newInstance(category, categoryReleases);
+                }
+                return new Fragment(); // Fallback
             }
         }
 
         @Override
         public int getItemCount() {
-            // 3 static tabs (Community Games, Tests, Fixes) + number of dynamic categories
+            // 1 static "Community" tab + number of dynamic categories
             return DYNAMIC_TABS_START_POS + dynamicCategories.size();
         }
     }
 
+    // FetchApiDataTask remains largely the same, its onPostExecute will correctly
+    // update the adapter and the TabLayoutMediator will refresh with the new structure.
     private class FetchApiDataTask extends AsyncTask<String, Void, Map<String, List<Release>>> {
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
             if (progressBar != null) progressBar.setVisibility(View.VISIBLE);
             if (errorTextView != null) errorTextView.setVisibility(View.GONE);
-            // Hide tabs and viewpager until data is loaded or failed gracefully
             if (tabLayout != null) tabLayout.setVisibility(View.GONE);
             if (viewPager != null) viewPager.setVisibility(View.GONE);
         }
@@ -352,12 +345,9 @@ public class MainActivity extends AppCompatActivity {
             if (progressBar != null) progressBar.setVisibility(View.GONE);
 
             if (pagerAdapter != null) {
-                // Update adapter with dynamic data. Static tabs are always present.
                 pagerAdapter.updateData(result != null ? result : new LinkedHashMap<>());
             }
 
-            // Detach and re-attach TabLayoutMediator to ensure tabs are correctly displayed
-            // This is important because getItemCount() and getPageTitle() will change
             if (tabLayout != null && viewPager != null && pagerAdapter != null && MainActivity.this.tabLayoutMediator != null) {
                 MainActivity.this.tabLayoutMediator.detach();
                 MainActivity.this.tabLayoutMediator = new TabLayoutMediator(tabLayout, viewPager,
@@ -370,18 +360,16 @@ public class MainActivity extends AppCompatActivity {
                 MainActivity.this.tabLayoutMediator.attach();
             }
             
-            // Show tabs and pager now that they are populated (or attempted)
             if (tabLayout != null) tabLayout.setVisibility(View.VISIBLE);
             if (viewPager != null) viewPager.setVisibility(View.VISIBLE);
 
             if (result == null && (pagerAdapter == null || pagerAdapter.dynamicCategories.isEmpty())) {
                  if (errorTextView != null) {
-                    // Error message updated to reflect that static tabs are still available
-                    errorTextView.setText("Erro ao carregar dados da API. As abas da comunidade ainda estão disponíveis.");
+                    errorTextView.setText("Erro ao carregar dados da API. A aba Comunidade ainda está disponível.");
                     errorTextView.setVisibility(View.VISIBLE);
                 }
             } else if (errorTextView != null) {
-                errorTextView.setVisibility(View.GONE); // Hide error if data loaded or static tabs are primary
+                errorTextView.setVisibility(View.GONE);
             }
         }
 
@@ -422,7 +410,6 @@ public class MainActivity extends AppCompatActivity {
                 String tagName = releaseJson.optString("tag_name", "");
                 String releaseName = releaseJson.optString("name", tagName);
                 String body = releaseJson.optString("body", "");
-                // String publishedAt = releaseJson.optString("published_at", ""); // Not used in Release model
 
                 JSONArray assets = releaseJson.optJSONArray("assets");
                 String downloadUrl = "";
