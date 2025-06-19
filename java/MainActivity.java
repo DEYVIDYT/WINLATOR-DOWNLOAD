@@ -1,26 +1,26 @@
 package com.winlator.Download;
 
-import android.Manifest; // Added
-import android.content.pm.PackageManager; // Added
-import androidx.core.app.ActivityCompat; // Added
-import androidx.core.content.ContextCompat; // Added
-import androidx.annotation.NonNull; // Added
-// import androidx.appcompat.app.AlertDialog; // Will be replaced by MaterialAlertDialogBuilder for building
-import androidx.appcompat.app.AlertDialog; // Still needed for the dialog instance type
-import com.google.android.material.dialog.MaterialAlertDialogBuilder; // Added
+import android.Manifest;
+import android.content.pm.PackageManager;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentManager;
-import androidx.fragment.app.FragmentTransaction;
+// FragmentManager and FragmentTransaction are not directly used for ViewPager2 adapter logic here
+// import androidx.fragment.app.FragmentManager;
+// import androidx.fragment.app.FragmentTransaction;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
 
-import android.content.DialogInterface; // Added
+import android.content.DialogInterface;
 import android.content.Intent;
-import android.net.Uri; // Added
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.provider.Settings; // Added
+import android.provider.Settings;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -34,6 +34,10 @@ import com.google.android.material.color.DynamicColors;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 import com.winlator.Download.model.Release;
+
+// Import new fragments
+import com.winlator.Download.CommunityTestFragment;
+import com.winlator.Download.CommunityFixFragment;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -56,13 +60,21 @@ public class MainActivity extends AppCompatActivity {
     private TabLayout tabLayout;
     private ViewPager2 viewPager;
     private MyPagerAdapter pagerAdapter;
+    // apiData is used by FetchApiDataTask and passed to the adapter for dynamic tabs
     private Map<String, List<Release>> apiData = new LinkedHashMap<>();
     private ProgressBar progressBar;
     private TextView errorTextView;
-    private com.google.android.material.tabs.TabLayoutMediator tabLayoutMediator; // Added class field
+    private com.google.android.material.tabs.TabLayoutMediator tabLayoutMediator;
 
     private static final String API_URL = "https://raw.githubusercontent.com/DEYVIDYT/WINLATOR-DOWNLOAD/refs/heads/main/WINLATOR.json";
     private static final int STORAGE_PERMISSION_CODE = 101;
+
+    // Constants for tab positions for clarity
+    private static final int COMMUNITY_GAMES_POS = 0;
+    private static final int COMMUNITY_TESTS_POS = 1;
+    private static final int COMMUNITY_FIXES_POS = 2;
+    private static final int DYNAMIC_TABS_START_POS = 3;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,61 +90,36 @@ public class MainActivity extends AppCompatActivity {
         progressBar = findViewById(R.id.progressBar);
         errorTextView = findViewById(R.id.errorTextView);
 
-        // Initialize apiData if not already
-        apiData = new LinkedHashMap<>();
+        apiData = new LinkedHashMap<>(); // Initialize
 
-        // Initialize adapter with empty data
         pagerAdapter = new MyPagerAdapter(this);
         viewPager.setAdapter(pagerAdapter);
 
-        // Setup TabLayoutMediator here and assign to class field
         this.tabLayoutMediator = new TabLayoutMediator(tabLayout, viewPager,
             (tab, position) -> {
-                if (pagerAdapter != null) { // Ensure adapter is available
+                if (pagerAdapter != null) {
                     tab.setText(pagerAdapter.getPageTitle(position));
                 }
             }
         );
         this.tabLayoutMediator.attach();
 
-        // Adicionando logs para depuração
-        if (progressBar == null) {
-            Log.e("MainActivity", "progressBar is null after findViewById");
-        } else {
-            Log.d("MainActivity", "progressBar found");
-        }
-
-        if (errorTextView == null) {
-            Log.e("MainActivity", "errorTextView is null after findViewById");
-        } else {
-            Log.d("MainActivity", "errorTextView found");
-        }
-
         new FetchApiDataTask().execute(API_URL);
 
         if (!checkStoragePermissions()) {
             requestStoragePermissions();
         } else {
-            // Permissions are already granted, proceed with app logic that needs storage
-            // e.g., initializeFileDependentFeatures();
-            // For now, just log or do nothing specific if already granted at this stage.
             Log.d("MainActivity", "Storage permissions already granted.");
         }
     }
 
     private boolean checkStoragePermissions() {
-        // Check for READ_EXTERNAL_STORAGE is always relevant.
         boolean readGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-
-        // For WRITE_EXTERNAL_STORAGE, if we're on API 28 or lower, it must be granted.
-        // If on API 29+, this permission (as defined with maxSdkVersion=28) is not available for general use,
-        // so we don't strictly need to check its grant status for the app to proceed,
-        // as long as READ is granted and the app uses modern storage practices.
-        if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) { // Android 9 (Pie) or older
+        if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) {
             boolean writeGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
             return readGranted && writeGranted;
-        } else { // Android 10 (Q) or newer
-            return readGranted; // Primarily rely on READ for shared storage access.
+        } else {
+            return readGranted;
         }
     }
 
@@ -142,33 +129,23 @@ public class MainActivity extends AppCompatActivity {
                 STORAGE_PERMISSION_CODE);
     }
 
-    // onRequestPermissionsResult will be handled in the next subtask
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
         if (requestCode == STORAGE_PERMISSION_CODE) {
-            if (checkStoragePermissions()) { // Re-check using the same logic as onCreate
+            if (checkStoragePermissions()) {
                 Toast.makeText(this, "Permissões de armazenamento concedidas!", Toast.LENGTH_SHORT).show();
-                // Proceed with app logic
-                // e.g., initializeFileDependentFeatures();
             } else {
-                // Permissions were denied or not fully granted as per checkStoragePermissions logic
                 boolean canRequestAgain = false;
                 for (String permission : permissions) {
-                    // Check if we can request any of the *requested* permissions again.
                     if (ActivityCompat.shouldShowRequestPermissionRationale(this, permission)) {
                         canRequestAgain = true;
                         break;
                     }
                 }
-
                 if (canRequestAgain) {
-                    // User denied, but not "Don't ask again". Show dialog to explain and retry.
                     showPermissionDeniedDialog(false);
                 } else {
-                    // User denied with "Don't ask again" or permission is otherwise blocked.
-                    // Show dialog to explain and guide to settings.
                     showPermissionDeniedDialog(true);
                 }
             }
@@ -176,45 +153,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showPermissionDeniedDialog(boolean goToSettings) {
-        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this); // Changed
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this);
         builder.setTitle("Permissão Necessária");
         builder.setMessage("Esta aplicação precisa da permissão de armazenamento para funcionar corretamente. Por favor, conceda a permissão.");
-        builder.setCancelable(false); // User must interact with the dialog
+        builder.setCancelable(false);
 
         if (goToSettings) {
-            builder.setPositiveButton("Abrir Configurações", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    dialog.dismiss();
-                    // Intent to open app settings
-                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                    Uri uri = Uri.fromParts("package", getPackageName(), null);
-                    intent.setData(uri);
-                    startActivity(intent);
-                    // Consider finishing MainActivity or re-checking permission in onResume after returning from settings
-                }
+            builder.setPositiveButton("Abrir Configurações", (dialog, which) -> {
+                dialog.dismiss();
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                Uri uri = Uri.fromParts("package", getPackageName(), null);
+                intent.setData(uri);
+                startActivity(intent);
             });
-            builder.setNegativeButton("Sair", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    dialog.dismiss();
-                    finish(); // Exit the app
-                }
+            builder.setNegativeButton("Sair", (dialog, which) -> {
+                dialog.dismiss();
+                finish();
             });
         } else {
-            builder.setPositiveButton("Conceder Permissão", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    dialog.dismiss();
-                    requestStoragePermissions(); // Request again
-                }
+            builder.setPositiveButton("Conceder Permissão", (dialog, which) -> {
+                dialog.dismiss();
+                requestStoragePermissions();
             });
-            builder.setNegativeButton("Sair", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    dialog.dismiss();
-                    finish(); // Exit the app
-                }
+            builder.setNegativeButton("Sair", (dialog, which) -> {
+                dialog.dismiss();
+                finish();
             });
         }
         builder.show();
@@ -228,128 +191,111 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == R.id.action_downloads) {
-            Intent intent = new Intent(this, DownloadManagerActivity.class);
-            startActivity(intent);
+        int itemId = item.getItemId();
+        if (itemId == R.id.action_downloads) {
+            startActivity(new Intent(this, DownloadManagerActivity.class));
             return true;
-        } else if (item.getItemId() == R.id.action_community_games) {
-            Intent intent = new Intent(this, SettingsActivity.class);
-            startActivity(intent);
+        } else if (itemId == R.id.action_community_games) { // This seems to go to SettingsActivity
+            startActivity(new Intent(this, SettingsActivity.class));
             return true;
-        } else if (item.getItemId() == R.id.action_upload_monitor) {
-            Intent intent = new Intent(this, UploadMonitorActivity.class);
-            startActivity(intent);
+        } else if (itemId == R.id.action_upload_monitor) {
+            startActivity(new Intent(this, UploadMonitorActivity.class));
             return true;
         }
         return super.onOptionsItemSelected(item);
     }
 
-    // private void setupViewPagerAndTabs() { // This method will be removed or its logic incorporated elsewhere
-    //     // pagerAdapter = new MyPagerAdapter(this, apiData); // Adapter is now initialized in onCreate
-    //     // viewPager.setAdapter(pagerAdapter); // Adapter is set in onCreate
-    //
-    //     // new TabLayoutMediator(tabLayout, viewPager, (tab, position) -> {
-    //     //     tab.setText(pagerAdapter.getPageTitle(position)); // Titles from adapter
-    //     // }).attach();
-    // }
-
     private static class MyPagerAdapter extends FragmentStateAdapter {
-        private Map<String, List<Release>> data; // Now mutable
-        private List<String> categories; // Now mutable
+        private Map<String, List<Release>> dynamicData; // Renamed for clarity
+        private List<String> dynamicCategories; // Renamed for clarity
+
+        // Titles for static tabs
+        private static final String TITLE_COMMUNITY_GAMES = "Jogos da Comunidade";
+        private static final String TITLE_COMMUNITY_TESTS = "Testes da Comunidade";
+        private static final String TITLE_COMMUNITY_FIXES = "Fixes da Comunidade";
+
 
         public MyPagerAdapter(AppCompatActivity activity) {
             super(activity);
-            this.data = new LinkedHashMap<>(); // Initialize with empty data
-            this.categories = new ArrayList<>();
+            this.dynamicData = new LinkedHashMap<>();
+            this.dynamicCategories = new ArrayList<>();
         }
 
-        public void updateData(Map<String, List<Release>> newData) {
-            this.data.clear();
-            this.categories.clear();
-            if (newData != null) {
-                this.data.putAll(newData);
-                this.categories.addAll(newData.keySet());
+        public void updateData(Map<String, List<Release>> newDynamicData) {
+            this.dynamicData.clear();
+            this.dynamicCategories.clear();
+            if (newDynamicData != null) {
+                this.dynamicData.putAll(newDynamicData);
+                this.dynamicCategories.addAll(newDynamicData.keySet());
             }
-            notifyDataSetChanged(); // Crucial!
+            notifyDataSetChanged();
         }
 
         public CharSequence getPageTitle(int position) {
-            if (position == 0) {
-                return "Jogos da Comunidade";
-            } else {
-                if (position -1 < categories.size()) {
-                    return categories.get(position - 1);
-                }
-                return ""; // Should not happen if getItemCount is correct
+            switch (position) {
+                case COMMUNITY_GAMES_POS:
+                    return TITLE_COMMUNITY_GAMES;
+                case COMMUNITY_TESTS_POS:
+                    return TITLE_COMMUNITY_TESTS;
+                case COMMUNITY_FIXES_POS:
+                    return TITLE_COMMUNITY_FIXES;
+                default:
+                    int dynamicIndex = position - DYNAMIC_TABS_START_POS;
+                    if (dynamicIndex >= 0 && dynamicIndex < dynamicCategories.size()) {
+                        return dynamicCategories.get(dynamicIndex);
+                    }
+                    return ""; // Fallback
             }
         }
 
-
         @Override
         public Fragment createFragment(int position) {
-            if (position == 0) {
-                return new CommunityGamesFragment();
-            } else {
-                if (position - 1 < categories.size()) {
-                    String category = categories.get(position - 1);
-                    List<Release> categoryReleases = data.get(category);
-                    if (categoryReleases == null) { // Should not happen if data is consistent
-                        categoryReleases = new ArrayList<>();
+            switch (position) {
+                case COMMUNITY_GAMES_POS:
+                    return new CommunityGamesFragment();
+                case COMMUNITY_TESTS_POS:
+                    return new CommunityTestFragment();
+                case COMMUNITY_FIXES_POS:
+                    return new CommunityFixFragment();
+                default:
+                    int dynamicIndex = position - DYNAMIC_TABS_START_POS;
+                    if (dynamicIndex >= 0 && dynamicIndex < dynamicCategories.size()) {
+                        String category = dynamicCategories.get(dynamicIndex);
+                        List<Release> categoryReleases = dynamicData.get(category);
+                        if (categoryReleases == null) {
+                            categoryReleases = new ArrayList<>();
+                        }
+                        return ReleasesFragment.newInstance(category, categoryReleases);
                     }
-                    return ReleasesFragment.newInstance(category, categoryReleases);
-                }
-                // Should not happen if getItemCount is correct
-                return new Fragment(); // Return an empty fragment as a fallback
+                    return new Fragment(); // Fallback
             }
         }
 
         @Override
         public int getItemCount() {
-            return categories.size() + 1; // +1 for CommunityGamesFragment
+            // 3 static tabs (Community Games, Tests, Fixes) + number of dynamic categories
+            return DYNAMIC_TABS_START_POS + dynamicCategories.size();
         }
     }
 
     private class FetchApiDataTask extends AsyncTask<String, Void, Map<String, List<Release>>> {
-
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
-            // Verificação adicional antes de usar progressBar e errorTextView
-            if (progressBar != null) {
-                progressBar.setVisibility(View.VISIBLE);
-            } else {
-                Log.e("MainActivity", "progressBar is null in onPreExecute");
-            }
-            if (errorTextView != null) {
-                errorTextView.setVisibility(View.GONE);
-            } else {
-                Log.e("MainActivity", "errorTextView is null in onPreExecute");
-            }
-            if (tabLayout != null) {
-                tabLayout.setVisibility(View.GONE);
-            } else {
-                Log.e("MainActivity", "tabLayout is null in onPreExecute");
-            }
-            if (viewPager != null) {
-                viewPager.setVisibility(View.GONE);
-            } else {
-                Log.e("MainActivity", "viewPager is null in onPreExecute");
-            }
+            if (progressBar != null) progressBar.setVisibility(View.VISIBLE);
+            if (errorTextView != null) errorTextView.setVisibility(View.GONE);
+            // Hide tabs and viewpager until data is loaded or failed gracefully
+            if (tabLayout != null) tabLayout.setVisibility(View.GONE);
+            if (viewPager != null) viewPager.setVisibility(View.GONE);
         }
 
         @Override
         protected Map<String, List<Release>> doInBackground(String... urls) {
-            if (urls.length == 0) {
-                return null;
-            }
-
+            if (urls.length == 0) return null;
             String urlString = urls[0];
             HttpURLConnection urlConnection = null;
             BufferedReader reader = null;
-            String jsonString = null;
-
             Map<String, List<Release>> allReleasesData = new LinkedHashMap<>();
-
             try {
                 URL url = new URL(urlString);
                 urlConnection = (HttpURLConnection) url.openConnection();
@@ -358,131 +304,93 @@ public class MainActivity extends AppCompatActivity {
                 urlConnection.setReadTimeout(15000);
                 urlConnection.connect();
 
-                int responseCode = urlConnection.getResponseCode();
-                if (responseCode != HttpURLConnection.HTTP_OK) {
-                    Log.e("MainActivity", "HTTP error code: " + responseCode);
+                if (urlConnection.getResponseCode() != HttpURLConnection.HTTP_OK) {
+                    Log.e("MainActivity", "HTTP error: " + urlConnection.getResponseCode());
                     return null;
                 }
 
                 StringBuilder buffer = new StringBuilder();
                 reader = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
                 String line;
-                while ((line = reader.readLine()) != null) {
-                    buffer.append(line).append("\n");
-                }
+                while ((line = reader.readLine()) != null) buffer.append(line).append("\n");
 
-                if (buffer.length() == 0) {
-                    return null;
-                }
-                jsonString = buffer.toString();
+                if (buffer.length() == 0) return null;
 
-                JSONObject jsonObject = new JSONObject(jsonString);
-
+                JSONObject jsonObject = new JSONObject(buffer.toString());
                 Iterator<String> categories = jsonObject.keys();
                 while (categories.hasNext()) {
                     String category = categories.next();
                     JSONObject categoryObject = jsonObject.getJSONObject(category);
                     List<Release> releasesForCategory = new ArrayList<>();
-
                     Iterator<String> repos = categoryObject.keys();
                     while (repos.hasNext()) {
                         String repoName = repos.next();
                         String repoUrl = categoryObject.getString(repoName);
-
-                        // Fetch latest release for each repository
                         String apiUrl = convertToApiUrl(repoUrl);
                         if (apiUrl != null) {
                             Release latestRelease = fetchLatestRelease(apiUrl, repoName, repoUrl);
-                            if (latestRelease != null) {
-                                releasesForCategory.add(latestRelease);
-                            }
+                            if (latestRelease != null) releasesForCategory.add(latestRelease);
                         }
                     }
                     allReleasesData.put(category, releasesForCategory);
                 }
                 return allReleasesData;
-
             } catch (Exception e) {
-                Log.e("MainActivity", "Error fetching or parsing JSON", e);
+                Log.e("MainActivity", "Error fetching/parsing API data", e);
                 return null;
             } finally {
-                if (urlConnection != null) {
-                    urlConnection.disconnect();
-                }
-                if (reader != null) {
-                    try {
-                        reader.close();
-                    } catch (final Exception e) {
-                        Log.e("MainActivity", "Error closing stream", e);
-                    }
-                }
+                if (urlConnection != null) urlConnection.disconnect();
+                if (reader != null) try { reader.close(); } catch (Exception e) { /* ignore */ }
             }
         }
 
         @Override
         protected void onPostExecute(Map<String, List<Release>> result) {
             super.onPostExecute(result);
-            if (progressBar != null) {
-                progressBar.setVisibility(View.GONE);
-            }
+            if (isDestroyed() || isFinishing()) return;
 
-            // Update the adapter's data instead of re-creating everything
-            if (isDestroyed() || isFinishing()) {
-                return;
-            }
+            if (progressBar != null) progressBar.setVisibility(View.GONE);
 
             if (pagerAdapter != null) {
-                if (result != null && !result.isEmpty()) {
-                    // apiData.clear(); // MainActivity's apiData is no longer the direct source for adapter after init
-                    // apiData.putAll(result); // No longer directly populating MainActivity.apiData this way for adapter
-                    pagerAdapter.updateData(result);
-                } else {
-                    // Handle case where result is null or empty, perhaps clear existing tabs or show empty state
-                    pagerAdapter.updateData(new LinkedHashMap<>()); // Pass empty map to clear
-                }
+                // Update adapter with dynamic data. Static tabs are always present.
+                pagerAdapter.updateData(result != null ? result : new LinkedHashMap<>());
             }
 
-            // Detach and re-attach TabLayoutMediator to ensure tabs are rebuilt
-            if (tabLayout != null && viewPager != null && pagerAdapter != null) {
-                if (MainActivity.this.tabLayoutMediator != null) { // Qualified with MainActivity.this
-                    MainActivity.this.tabLayoutMediator.detach(); // Qualified
-                }
-                MainActivity.this.tabLayoutMediator = new TabLayoutMediator(tabLayout, viewPager, // Qualified
+            // Detach and re-attach TabLayoutMediator to ensure tabs are correctly displayed
+            // This is important because getItemCount() and getPageTitle() will change
+            if (tabLayout != null && viewPager != null && pagerAdapter != null && MainActivity.this.tabLayoutMediator != null) {
+                MainActivity.this.tabLayoutMediator.detach();
+                MainActivity.this.tabLayoutMediator = new TabLayoutMediator(tabLayout, viewPager,
                     (tab, position) -> {
                         if (pagerAdapter != null) {
                             tab.setText(pagerAdapter.getPageTitle(position));
                         }
                     }
                 );
-                MainActivity.this.tabLayoutMediator.attach(); // Qualified
+                MainActivity.this.tabLayoutMediator.attach();
             }
             
-            // Ensure UI elements are visible after data load attempt
-            if (tabLayout != null) {
-                tabLayout.setVisibility(View.VISIBLE);
-            }
-            if (viewPager != null) {
-                viewPager.setVisibility(View.VISIBLE);
-            }
+            // Show tabs and pager now that they are populated (or attempted)
+            if (tabLayout != null) tabLayout.setVisibility(View.VISIBLE);
+            if (viewPager != null) viewPager.setVisibility(View.VISIBLE);
 
-            // Só mostrar erro se não conseguir configurar as abas
-            if (result == null && apiData.isEmpty()) {
-                if (errorTextView != null) {
-                    errorTextView.setText("Erro ao carregar dados da API. A aba de Jogos da Comunidade ainda está disponível.");
+            if (result == null && (pagerAdapter == null || pagerAdapter.dynamicCategories.isEmpty())) {
+                 if (errorTextView != null) {
+                    // Error message updated to reflect that static tabs are still available
+                    errorTextView.setText("Erro ao carregar dados da API. As abas da comunidade ainda estão disponíveis.");
                     errorTextView.setVisibility(View.VISIBLE);
                 }
+            } else if (errorTextView != null) {
+                errorTextView.setVisibility(View.GONE); // Hide error if data loaded or static tabs are primary
             }
         }
 
         private String convertToApiUrl(String githubUrl) {
-            // Converter https://github.com/user/repo para https://api.github.com/repos/user/repo/releases/latest
             if (githubUrl != null && githubUrl.contains("github.com")) {
                 Pattern pattern = Pattern.compile("https://github\\.com/([^/]+)/([^/]+)");
                 Matcher matcher = pattern.matcher(githubUrl);
                 if (matcher.find()) {
-                    String user = matcher.group(1);
-                    String repo = matcher.group(2);
-                    return "https://api.github.com/repos/" + user + "/" + repo + "/releases/latest";
+                    return "https://api.github.com/repos/" + matcher.group(1) + "/" + matcher.group(2) + "/releases/latest";
                 }
             }
             return null;
@@ -491,7 +399,6 @@ public class MainActivity extends AppCompatActivity {
         private Release fetchLatestRelease(String apiUrl, String repoName, String htmlUrl) {
             HttpURLConnection urlConnection = null;
             BufferedReader reader = null;
-
             try {
                 URL url = new URL(apiUrl);
                 urlConnection = (HttpURLConnection) url.openConnection();
@@ -501,28 +408,22 @@ public class MainActivity extends AppCompatActivity {
                 urlConnection.setReadTimeout(15000);
                 urlConnection.connect();
 
-                int responseCode = urlConnection.getResponseCode();
-                if (responseCode != HttpURLConnection.HTTP_OK) {
-                    Log.e("MainActivity", "HTTP error code: " + responseCode + " for " + apiUrl);
+                if (urlConnection.getResponseCode() != HttpURLConnection.HTTP_OK) {
+                    Log.e("MainActivity", "HTTP error " + urlConnection.getResponseCode() + " for " + apiUrl);
                     return null;
                 }
 
                 StringBuilder buffer = new StringBuilder();
                 reader = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
                 String line;
-                while ((line = reader.readLine()) != null) {
-                    buffer.append(line).append("\n");
-                }
+                while ((line = reader.readLine()) != null) buffer.append(line).append("\n");
 
-                String jsonString = buffer.toString();
-                JSONObject releaseJson = new JSONObject(jsonString);
-
+                JSONObject releaseJson = new JSONObject(buffer.toString());
                 String tagName = releaseJson.optString("tag_name", "");
                 String releaseName = releaseJson.optString("name", tagName);
                 String body = releaseJson.optString("body", "");
-                String publishedAt = releaseJson.optString("published_at", "");
+                // String publishedAt = releaseJson.optString("published_at", ""); // Not used in Release model
 
-                // Buscar o primeiro asset disponível para download
                 JSONArray assets = releaseJson.optJSONArray("assets");
                 String downloadUrl = "";
                 String assetName = "";
@@ -534,40 +435,18 @@ public class MainActivity extends AppCompatActivity {
                     assetName = firstAsset.optString("name", "");
                     assetSize = firstAsset.optLong("size", 0);
                 }
-
-                // Se não houver assets, usar o zipball_url
                 if (downloadUrl.isEmpty()) {
                     downloadUrl = releaseJson.optString("zipball_url", "");
                     assetName = repoName + "-" + tagName + ".zip";
                 }
-
-                return new Release(
-                    repoName,
-                    tagName,
-                    releaseName,
-                    body,
-                    downloadUrl,
-                    htmlUrl,
-                    assetName,
-                    assetSize
-                );
-
+                return new Release(repoName, tagName, releaseName, body, downloadUrl, htmlUrl, assetName, assetSize);
             } catch (Exception e) {
-                Log.e("MainActivity", "Erro ao buscar release de " + apiUrl, e);
+                Log.e("MainActivity", "Error fetching release from " + apiUrl, e);
                 return null;
             } finally {
-                if (urlConnection != null) {
-                    urlConnection.disconnect();
-                }
-                if (reader != null) {
-                    try {
-                        reader.close();
-                    } catch (Exception e) {
-                        Log.e("MainActivity", "Erro ao fechar stream", e);
-                    }
-                }
+                if (urlConnection != null) urlConnection.disconnect();
+                if (reader != null) try { reader.close(); } catch (Exception e) { /* ignore */ }
             }
         }
     }
 }
-
