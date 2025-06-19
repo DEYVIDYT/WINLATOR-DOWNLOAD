@@ -578,28 +578,29 @@ public class DownloadService extends Service {
     // It will be used for "invalid params" or "preparing" notifications,
     // which are temporary and replaced by download-specific notifications or cancelled.
     final int TRANSIENT_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1;
+    Notification transientNotificationObject; // Declare once
 
         if (urlString == null || urlString.trim().isEmpty() || fileName == null || fileName.trim().isEmpty() || !URLUtil.isValidUrl(urlString)) {
             Log.e(TAG, "handleStartDownload: Invalid or missing URL/FileName. URL: '" + urlString + "', FileName: '" + fileName + "'. Stopping service or not queueing.");
 
         String errorReason = URLUtil.isValidUrl(urlString) ? "Pedido de download inválido." : "URL de download inválida.";
-        Notification invalidParamsNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
+        // Assign to the single declared Notification object
+        transientNotificationObject = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_cancel)
                 .setContentTitle("Download Falhou")
             .setContentText(errorReason)
                 .setAutoCancel(true)
                 .build();
-        // Use the single ID for this transient notification
-        startForeground(TRANSIENT_NOTIFICATION_ID, invalidParamsNotification);
+
+        startForeground(TRANSIENT_NOTIFICATION_ID, transientNotificationObject);
         stopSelf(); // Stop the service as it cannot proceed.
             return;
         }
 
-    // If parameters are valid, show the "Preparing download..." notification
-    // This uses the same TRANSIENT_NOTIFICATION_ID, as it will be cancelled by prepareAndStartDownload
-    // or by a specific download's notification.
-        Notification preparingNotification = createPreparingNotification(fileName);
-    startForeground(TRANSIENT_NOTIFICATION_ID, preparingNotification);
+    // If parameters are valid, assign the "Preparing download..." notification
+    // to the same Notification object variable.
+    transientNotificationObject = createPreparingNotification(fileName);
+    startForeground(TRANSIENT_NOTIFICATION_ID, transientNotificationObject);
 
     // The rest of the method (synchronized block and call to prepareAndStartDownload) remains the same
         synchronized (queueLock) {
