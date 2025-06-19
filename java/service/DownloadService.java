@@ -51,10 +51,15 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.Queue;
+import java.util.LinkedList;
 
 public class DownloadService extends Service {
 
     private static final String TAG = "DownloadService";
+    // private static final int MAX_CONCURRENT_DOWNLOADS = 3; // Removed
+    private int maxConcurrentDownloads; // Member variable to store the configured limit
+    private final Object queueLock = new Object(); // For synchronizing access to the queue and activeDownloads size check
     public static final String EXTRA_URL = "com.winlator.Download.extra.URL";
     public static final String EXTRA_FILE_NAME = "com.winlator.Download.extra.FILE_NAME";
     public static final String EXTRA_DOWNLOAD_ID = "com.winlator.Download.extra.DOWNLOAD_ID";
@@ -110,6 +115,34 @@ public class DownloadService extends Service {
     // Mapa para armazenar as notificações ativas
     private final Map<Long, NotificationCompat.Builder> activeNotifications = new ConcurrentHashMap<>();
 
+    // Helper class to store intent data for queued downloads
+    private static class QueuedDownloadRequest {
+        Intent intent;
+        String urlString;
+        String fileName;
+        String authToken;
+        String gofileContentId;
+
+        QueuedDownloadRequest(Intent intent, String urlString, String fileName, String authToken, String gofileContentId) {
+            this.intent = intent; // Keep original intent if needed for all extras, or extract all necessary ones
+            this.urlString = urlString;
+            this.fileName = fileName;
+            this.authToken = authToken;
+            this.gofileContentId = gofileContentId;
+        }
+
+        void process(DownloadService service) {
+            // This re-constructs the core logic from handleStartDownload's executor block
+            // to prepare and then actually start the download via the main thread.
+            Log.d(TAG, "Processing queued request for: " + fileName);
+            service.prepareAndStartDownload(urlString, fileName, authToken, gofileContentId, intent);
+        }
+    }
+
+    // Modify the existing pendingDownloadQueue to use this type
+    private final Queue<QueuedDownloadRequest> pendingDownloadQueueTyped = new LinkedList<>();
+
+
     public class DownloadBinder extends Binder {
         public DownloadService getService() {
             return DownloadService.this;
@@ -124,6 +157,9 @@ public class DownloadService extends Service {
             dbHelper = new SQLiteHelper(this);
             broadcastManager = LocalBroadcastManager.getInstance(this);
             createNotificationChannel();
+            maxConcurrentDownloads = AppSettings.getMaxConcurrentDownloads(this); // Get from AppSettings
+            Log.i(TAG, "Max concurrent downloads set to: " + maxConcurrentDownloads);
+
             if (executor == null || executor.isShutdown()) { // Ensure executor is initialized
                 executor = Executors.newSingleThreadExecutor();
             }
@@ -536,106 +572,152 @@ public class DownloadService extends Service {
         // Capture Gofile Content ID for use in path construction if present
         final String gofileContentId = intent.getStringExtra(EXTRA_GOFILE_CONTENT_ID);
 
-        executor.execute(() -> {
-            // fileName from intent can be a relative path (Gofile) or simple name (others)
-            Log.d(TAG, "handleStartDownload (Executor): Processing URL: '" + urlString + "', InputFileName: '" + fileName + "', GofileContentID: '" + gofileContentId + "'");
+        // ... (URL/FileName validation from existing handleStartDownload) ...
+        if (urlString == null || urlString.trim().isEmpty() || fileName == null || fileName.trim().isEmpty() || !URLUtil.isValidUrl(urlString)) {
+            Log.e(TAG, "handleStartDownload: Invalid or missing URL/FileName. URL: '" + urlString + "', FileName: '" + fileName + "'. Stopping service or not queueing.");
+            // ... (existing notification and stopSelf logic for invalid parameters) ...
+            final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1;
+            Notification invalidRequestNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_cancel)
+                .setContentTitle("Download Falhou")
+                .setContentText(URLUtil.isValidUrl(urlString) ? "Pedido de download inválido." : "URL de download inválida.")
+                .setAutoCancel(true)
+                .build();
+            startForeground(PREPARING_NOTIFICATION_ID, invalidRequestNotification);
+            stopSelf();
+            return;
+        }
+        // If parameters are valid, we show "Preparing" then decide to queue or start.
+        final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1;
+        Notification preparingNotification = createPreparingNotification(fileName);
+        startForeground(PREPARING_NOTIFICATION_ID, preparingNotification);
 
-            File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this));
-            File targetFile;
 
-            if (gofileContentId != null && !gofileContentId.isEmpty()) {
-                File gofileRootShareDir = new File(baseAppDownloadDir, gofileContentId);
-                targetFile = new File(gofileRootShareDir, fileName); // fileName is relative path here
-            } else {
-                targetFile = new File(baseAppDownloadDir, fileName); // fileName is simple name here
+        synchronized (queueLock) {
+            // Use the member variable maxConcurrentDownloads
+            if (activeDownloads.size() >= maxConcurrentDownloads) {
+                Log.i(TAG, "Max concurrent downloads (" + maxConcurrentDownloads + ") reached. Queuing download for: " + fileName);
+                pendingDownloadQueueTyped.offer(new QueuedDownloadRequest(intent, urlString, fileName, authToken, gofileContentId));
+                // Update status to PENDING in DB if not already
+                // This requires inserting first to get an ID, or finding existing.
+                // For simplicity, we'll ensure it's in DB as pending when it's actually processed from queue.
+                // The PREPARING_NOTIFICATION_ID will be cancelled when the queued item is processed or if service stops.
+                // We don't call checkStopForeground here as the service is active with queued items.
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+                    // Optionally, show a "Queued" toast or update a persistent "queued" notification
+                    Toast.makeText(DownloadService.this, fileName + " foi adicionado à fila.", Toast.LENGTH_SHORT).show();
+                }, 1000); // Delay to allow preparing notif to be seen briefly
+                return; // Queued, do not proceed to immediate execution.
             }
+        }
 
-            File parentDirFile = targetFile.getParentFile();
-            if (parentDirFile != null && !parentDirFile.exists()) {
-                if (!parentDirFile.mkdirs()) {
-                    Log.e(TAG, "handleStartDownload (Executor): Failed to create parent directory: " + parentDirFile.getAbsolutePath() + ". Aborting.");
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                        Toast.makeText(DownloadService.this, "Erro ao criar diretório para download.", Toast.LENGTH_SHORT).show();
-                    });
-                    checkStopForeground();
-                    return;
-                }
-            }
+        // If not queued, proceed with immediate preparation and start.
+        // This is the logic that was previously inside executor.execute()
+        if (executor == null || executor.isShutdown()) {
+            executor = Executors.newSingleThreadExecutor();
+        }
+        // Remove the PREPARING_NOTIFICATION_ID once actual processing starts
+        // This is done inside prepareAndStartDownload now.
+        executor.execute(() -> prepareAndStartDownload(urlString, fileName, authToken, gofileContentId, intent));
+    }
 
-            final String finalLocalPath = targetFile.getAbsolutePath();
-            final String actualDisplayFileName = targetFile.getName(); // This is the true file name, used for display and DB
+    // New method to encapsulate the logic previously in executor.execute() within handleStartDownload
+    private void prepareAndStartDownload(String urlString, String fileName, String authToken, String gofileContentId, Intent originalIntent) {
+        final int PREPARING_NOTIFICATION_ID = NOTIFICATION_ID_BASE - 1; // Same as in handleStartDownload
 
-            // Check if a download task for this specific localPath is already active
-            for (DownloadTask existingTask : activeDownloads.values()) {
-                if (existingTask.localPath != null && existingTask.localPath.equals(finalLocalPath)) {
-                    Log.i(TAG, "Download task for " + finalLocalPath + " already active.");
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                        Toast.makeText(DownloadService.this, actualDisplayFileName + " já está sendo baixado.", Toast.LENGTH_SHORT).show();
-                    });
-                    checkStopForeground();
-                    return;
-                }
-            }
+        Log.d(TAG, "prepareAndStartDownload (Executor): Processing URL: '" + urlString + "', InputFileName: '" + fileName + "', GofileContentID: '" + gofileContentId + "'");
 
-            // Use getDownloadIdByLocalPath for a more precise check if this exact file is already in DB
-            long downloadId = getDownloadIdByLocalPath(finalLocalPath);
-            Log.d(TAG, "handleStartDownload (Executor): getDownloadIdByLocalPath for '" + finalLocalPath + "' returned ID: " + downloadId);
+        File baseAppDownloadDir = new File(AppSettings.getDownloadPath(this));
+        File targetFile;
 
-            if (downloadId != -1) {
-                Download existingDownload = getDownloadById(downloadId);
+        if (gofileContentId != null && !gofileContentId.isEmpty()) {
+            File gofileRootShareDir = new File(baseAppDownloadDir, gofileContentId);
+            targetFile = new File(gofileRootShareDir, fileName);
+        } else {
+            targetFile = new File(baseAppDownloadDir, fileName);
+        }
+
+        File parentDirFile = targetFile.getParentFile();
+        if (parentDirFile != null && !parentDirFile.exists()) {
+            if (!parentDirFile.mkdirs()) {
+                Log.e(TAG, "prepareAndStartDownload (Executor): Failed to create parent directory: " + parentDirFile.getAbsolutePath() + ". Aborting.");
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                    if (existingDownload != null) {
-                        // Ensure URL also matches. If not, it's a new download replacing an old file, or an error.
-                        if (!existingDownload.getUrl().equals(urlString)) {
-                             Log.w(TAG, "Existing download found for path " + finalLocalPath + " but with different URL. Old: " + existingDownload.getUrl() + ", New: " + urlString + ". Overwriting DB entry and restarting.");
-                             deleteDownload(existingDownload.getId()); // This will also attempt to delete file, which is fine
-                             // Fall through to new download logic by setting downloadId to -1 (effectively) by not returning
-                        } else {
-                            // URL matches, it's the same download item
-                            if (existingDownload.getStatus() == Download.STATUS_COMPLETED) {
-                                Toast.makeText(DownloadService.this, actualDisplayFileName + " já foi baixado.", Toast.LENGTH_SHORT).show();
-                            } else if (existingDownload.getStatus() == Download.STATUS_PAUSED || existingDownload.getStatus() == Download.STATUS_FAILED) {
-                                Log.i(TAG, "Resuming/Retrying existing download for " + actualDisplayFileName);
-                                startDownload(existingDownload.getId(), existingDownload.getUrl(), actualDisplayFileName, effectiveAuthToken, finalLocalPath);
-                            } else if (existingDownload.getStatus() == Download.STATUS_DOWNLOADING) {
-                                Toast.makeText(DownloadService.this, actualDisplayFileName + " já está sendo baixado.", Toast.LENGTH_SHORT).show();
-                            }
-                            checkStopForeground();
-                            return; // Handled existing download
-                        }
-                    }
-                    // If existingDownload was null or URL mismatch led to fall-through:
-                    final long newOrUpdatedDownloadId = insertDownload(urlString, actualDisplayFileName, finalLocalPath);
-                    if (newOrUpdatedDownloadId != -1) {
-                        startDownload(newOrUpdatedDownloadId, urlString, actualDisplayFileName, effectiveAuthToken, finalLocalPath);
-                    } else {
-                        Log.e(TAG, "Failed to insert/update download record for: " + urlString + " at path " + finalLocalPath);
-                        Toast.makeText(DownloadService.this, "Erro ao iniciar download para " + actualDisplayFileName, Toast.LENGTH_SHORT).show();
-                    }
-                    checkStopForeground();
+                    Toast.makeText(DownloadService.this, "Erro ao criar diretório para download.", Toast.LENGTH_SHORT).show();
+                    checkAndDequeue(); // Try to start next if this one failed early
                 });
                 return;
             }
+        }
 
-            // No existing download found for this localPath, this is a new download.
-            final long newDownloadId = insertDownload(urlString, actualDisplayFileName, finalLocalPath);
-            Log.d(TAG, "handleStartDownload (Executor): No existing DB entry for this local path. Inserted new record with ID: " + newDownloadId);
+        final String finalLocalPath = targetFile.getAbsolutePath();
+        final String actualDisplayFileName = targetFile.getName();
 
-            new Handler(Looper.getMainLooper()).post(() -> {
-                if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
-                if (newDownloadId != -1) {
-                    startDownload(newDownloadId, urlString, actualDisplayFileName, effectiveAuthToken, finalLocalPath);
-                } else {
-                    Log.e(TAG, "Failed to insert new download record for: " + urlString + " at path " + finalLocalPath);
-                    Toast.makeText(DownloadService.this, "Erro ao iniciar download para " + actualDisplayFileName, Toast.LENGTH_SHORT).show();
+        for (DownloadTask existingTask : activeDownloads.values()) {
+            if (existingTask.localPath != null && existingTask.localPath.equals(finalLocalPath)) {
+                Log.i(TAG, "Download task for " + finalLocalPath + " already active (checked in prepareAndStartDownload).");
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+                    Toast.makeText(DownloadService.this, actualDisplayFileName + " já está sendo baixado.", Toast.LENGTH_SHORT).show();
+                    checkAndDequeue(); // This task isn't new, so check queue
+                });
+                return;
+            }
+        }
+
+        long downloadId = getDownloadIdByLocalPath(finalLocalPath);
+        Log.d(TAG, "prepareAndStartDownload (Executor): getDownloadIdByLocalPath for '" + finalLocalPath + "' returned ID: " + downloadId);
+
+        // This handler post is tricky because the logic inside it might return early.
+        // We need to ensure checkAndDequeue is called if this path doesn't lead to a new DownloadTask.
+        final Handler mainHandler = new Handler(Looper.getMainLooper());
+        mainHandler.post(() -> {
+            if (notificationManager != null) notificationManager.cancel(PREPARING_NOTIFICATION_ID);
+            long effectiveDownloadId = downloadId; // Use a new variable for ID within lambda
+
+            if (effectiveDownloadId != -1) {
+                Download existingDownload = getDownloadById(effectiveDownloadId);
+                if (existingDownload != null) {
+                    if (!existingDownload.getUrl().equals(urlString)) {
+                        Log.w(TAG, "Existing download for path " + finalLocalPath + " but different URL. Old: " + existingDownload.getUrl() + ", New: " + urlString + ". Overwriting.");
+                        deleteDownload(existingDownload.getId());
+                        effectiveDownloadId = -1; // Treat as new download
+                    } else {
+                        if (existingDownload.getStatus() == Download.STATUS_COMPLETED) {
+                            Toast.makeText(DownloadService.this, actualDisplayFileName + " já foi baixado.", Toast.LENGTH_SHORT).show();
+                        } else if (existingDownload.getStatus() == Download.STATUS_PAUSED || existingDownload.getStatus() == Download.STATUS_FAILED) {
+                            Log.i(TAG, "Resuming/Retrying existing download for " + actualDisplayFileName);
+                            updateDownloadStatus(effectiveDownloadId, Download.STATUS_PENDING); // Mark as pending before starting
+                            startDownload(effectiveDownloadId, existingDownload.getUrl(), actualDisplayFileName, authToken, finalLocalPath);
+                        } else if (existingDownload.getStatus() == Download.STATUS_DOWNLOADING) {
+                            Toast.makeText(DownloadService.this, actualDisplayFileName + " já está sendo baixado.", Toast.LENGTH_SHORT).show();
+                        }
+                        checkAndDequeue(); // Processed existing, check queue.
+                        return;
+                    }
+                } else { // DB ID found but record was null, treat as new
+                    effectiveDownloadId = -1;
                 }
-                checkStopForeground();
-            });
+            }
+
+            // If effectiveDownloadId is -1, it's a new download (or became one)
+            if (effectiveDownloadId == -1) {
+                effectiveDownloadId = insertDownload(urlString, actualDisplayFileName, finalLocalPath);
+                Log.d(TAG, "prepareAndStartDownload (MainThread): New download. Inserted record with ID: " + effectiveDownloadId);
+            }
+
+            if (effectiveDownloadId != -1) {
+                updateDownloadStatus(effectiveDownloadId, Download.STATUS_PENDING); // Mark as pending before starting
+                startDownload(effectiveDownloadId, urlString, actualDisplayFileName, authToken, finalLocalPath);
+            } else {
+                Log.e(TAG, "Failed to insert/obtain download record for: " + urlString + " at path " + finalLocalPath);
+                Toast.makeText(DownloadService.this, "Erro ao iniciar download para " + actualDisplayFileName, Toast.LENGTH_SHORT).show();
+                checkAndDequeue(); // Failed to start, check queue
+            }
         });
     }
+
 
     private void handlePauseDownload(Intent intent) {
         long downloadId = intent.getLongExtra(EXTRA_DOWNLOAD_ID, -1);
@@ -791,8 +873,8 @@ public class DownloadService extends Service {
         // Iniciar a tarefa de download, passing the authToken and targetLocalPath
         DownloadTask task = new DownloadTask(downloadId, urlString, displayFileName, builder, authToken, targetLocalPath);
         activeDownloads.put(downloadId, task);
-        Log.i(TAG, "startDownload: About to execute DownloadTask for ID: " + downloadId);
-        task.execute();
+        Log.i(TAG, "startDownload: About to execute DownloadTask for ID: " + downloadId + " on THREAD_POOL_EXECUTOR");
+        task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, (Void[]) null);
         
         // Enviar broadcast
         Intent broadcastIntent = new Intent(ACTION_DOWNLOAD_STATUS_CHANGED);
@@ -1311,28 +1393,59 @@ public class DownloadService extends Service {
             }
             
             // Se não houver mais downloads ativos, parar o serviço em primeiro plano
-            checkStopForeground();
+            // checkStopForeground(); // Moved to checkAndDequeue
+            checkAndDequeue(); // Call the new method
         }
 
         @Override
         protected void onCancelled(File result) { // onCancelled pode receber o resultado também
             super.onCancelled(result);
             isCancelled = true;
-            activeDownloads.remove(downloadId);
+            activeDownloads.remove(downloadId); // This should be before checkAndDequeue
             Log.d(TAG, "Download cancelled: " + displayFileName); // Use displayFileName for logs
             // A limpeza (DB, notificação, arquivo) é feita em handleCancelDownload
             // Enviar broadcast para garantir que a UI atualize
             Intent intent = new Intent(ACTION_DOWNLOAD_STATUS_CHANGED);
             intent.putExtra(EXTRA_DOWNLOAD_ID, downloadId);
             broadcastManager.sendBroadcast(intent);
-            checkStopForeground();
+            // checkStopForeground(); // Moved to checkAndDequeue
+            checkAndDequeue(); // Call the new method
+        }
+    }
+
+    private void checkAndDequeue() {
+        synchronized (queueLock) {
+            Log.d(TAG, "checkAndDequeue: Active downloads: " + activeDownloads.size() + ", Queue size: " + pendingDownloadQueueTyped.size() + ", Max concurrent: " + maxConcurrentDownloads);
+            // Use the member variable maxConcurrentDownloads
+            if (activeDownloads.size() < maxConcurrentDownloads && !pendingDownloadQueueTyped.isEmpty()) {
+                QueuedDownloadRequest requestToProcess = pendingDownloadQueueTyped.poll();
+                if (requestToProcess != null) {
+                    Log.i(TAG, "Dequeuing download request for: " + requestToProcess.fileName);
+                    // The requestToProcess.process() method itself calls prepareAndStartDownload,
+                    // which runs on the executor.
+                    if (executor == null || executor.isShutdown()) {
+                        executor = Executors.newSingleThreadExecutor();
+                    }
+                    executor.execute(() -> requestToProcess.process(this));
+                }
+            } else {
+                // If nothing to dequeue and no active downloads, consider stopping foreground
+                checkStopForeground();
+            }
         }
     }
     
     private void checkStopForeground() {
-         if (activeDownloads.isEmpty()) {
-             stopForeground(true); // true para remover a última notificação se ainda existir
-         }
+        synchronized (queueLock) { // Synchronize if accessing queue size
+            if (activeDownloads.isEmpty() && pendingDownloadQueueTyped.isEmpty()) {
+                Log.d(TAG, "No active or pending downloads. Stopping foreground service.");
+                stopForeground(true);
+                // Consider stopSelf() here if the service should fully stop when idle.
+                // stopSelf();
+            } else {
+                Log.d(TAG, "Service still has active ("+ activeDownloads.size() +") or pending ("+ pendingDownloadQueueTyped.size() +") downloads. Not stopping foreground.");
+            }
+        }
     }
 
     // --- Database Operations ---

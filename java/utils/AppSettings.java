@@ -165,6 +165,29 @@ public class AppSettings {
         return token;
     }
 
+    // New constant for concurrent downloads limit
+    public static final String PREF_KEY_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
+    private static final int DEFAULT_MAX_CONCURRENT_DOWNLOADS = 3;
+
+    // New method to get max concurrent downloads
+    public static int getMaxConcurrentDownloads(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        // Preference might be stored as a string if using EditTextPreference, parse carefully
+        try {
+            String value = prefs.getString(PREF_KEY_MAX_CONCURRENT_DOWNLOADS, String.valueOf(DEFAULT_MAX_CONCURRENT_DOWNLOADS));
+            int intValue = Integer.parseInt(value);
+            return Math.max(1, Math.min(intValue, 10)); // Ensure it's within a reasonable range (e.g., 1-10)
+        } catch (NumberFormatException e) {
+            return DEFAULT_MAX_CONCURRENT_DOWNLOADS; // Fallback to default if parsing fails
+        }
+    }
+
+    // Example setter if you were to add UI for it (not part of this subtask to call it)
+    public static void setMaxConcurrentDownloads(Context context, int limit) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        prefs.edit().putString(PREF_KEY_MAX_CONCURRENT_DOWNLOADS, String.valueOf(limit)).apply();
+    }
+
     public static String getDynamicGofileWt(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         String cachedWt = prefs.getString(KEY_GOFILE_WT_TOKEN, null);
